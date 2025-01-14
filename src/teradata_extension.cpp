@@ -8,6 +8,8 @@
 #include "duckdb/main/extension_util.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
+#include "teradata_scan.hpp"
+
 namespace duckdb {
 
 inline void QuackScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -21,6 +23,8 @@ static void LoadInternal(DatabaseInstance &instance) {
 	// Register a scalar function
 	auto quack_scalar_function = ScalarFunction("quack", {LogicalType::VARCHAR}, LogicalType::VARCHAR, QuackScalarFun);
 	ExtensionUtil::RegisterFunction(instance, quack_scalar_function);
+
+	TeradataScan::Register(instance);
 }
 
 void TeradataExtension::Load(DuckDB &db) {
