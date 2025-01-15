@@ -100,8 +100,103 @@ static void Connect() {
 
 	printf("Connected to Teradata with session id: %d\n", session_id);
 
-}
 
+
+	// Try to make a SQL request
+	dbc.func = DBFIRQ; // initiate request
+	dbc.change_opts = 'Y'; // change options to indicate that we want to change the options (to indicator mode)
+	dbc.resp_mode = 'I'; // indicator record mode
+	dbc.i_sess_id = session_id;
+
+	char sql[] = "SELECT NULL, 42";
+	dbc.req_ptr = sql;
+	dbc.req_len = static_cast<Int32>(strlen(sql));
+
+	DBCHCL(&result, context_area, &dbc);
+	if(result != EM_OK) {
+		auto str = string(dbc.msg_text, dbc.msg_len);
+		throw IOException("Failed to execute SQL: %s", str);
+	}
+	// this will set the o_req_id
+
+	/*
+		Record mode (Y) may return the following parcels
+		- Failure (9) - The request failed
+		- Error (49) - An error occurred
+		- StatementError (192) - An error occurred in the statement
+		- Success (8) - The request was successful
+		- StatementStatus (205)
+		- Record (10)
+		- With (33)
+		- EndWith (35)
+		- EndStatement (11)
+		- EndRequest (12)
+	 */
+
+	// Now fetch the result
+	dbc.func = DBFFET;
+	dbc.i_req_id = dbc.o_req_id;
+	dbc.fet_data_ptr = buf;
+	dbc.fet_max_data_len = sizeof(buf);
+
+	memset(buf, 0, sizeof(buf));
+
+	printf("Begin sql request");
+	bool do_fetch = false;
+	do {
+
+		DBCHCL(&result, context_area, &dbc);
+		if(result != EM_OK) {
+			auto str = string(dbc.msg_text, dbc.msg_len);
+			throw IOException("Failed to fetch result: %s", str);
+		}
+
+		switch (dbc.fet_parcel_flavor) {
+			case PclSUCCESS: {
+				printf("Success!");
+				do_fetch = true;
+				break;
+			}
+			case PclDATAINFO: {
+				printf("Got data info");
+				break;
+			}
+			case PclENDREQUEST: {
+				do_fetch = false;
+				break;
+			}
+			case PclRECORD: {
+				printf("Got record!");
+				// Within the Record parcel, each line of a table is separated from the next by hex 0D (decimal 13).
+				// Data conversion rules in p.1144
+				// p. 1144, 1143, 1145
+				auto n_columns = 2;
+				auto n_validity_bytes = (n_columns + 7) / 8;
+
+				auto data = buf + n_validity_bytes;
+
+				int32_t val = 0;
+				memcpy(&val, data, sizeof(int32_t));
+				printf("Value: %d", val);
+
+				break;
+			}
+			case PclENDSTATEMENT: {
+				printf("End statement");
+				break;
+			}
+			default: {
+				printf("Unknown parcel flavor: %d", dbc.fet_parcel_flavor);
+				do_fetch = false;
+				break;
+			}
+		}
+
+	} while(do_fetch);
+	printf("Done with request");
+
+	// TODO: End request properly
+}
 
 //------------------------------------------------------------------------------
 // Bind
@@ -150,7 +245,7 @@ static void Execute(ClientContext &context, TableFunctionInput &data, DataChunk 
 		return;
 	}
 
-	output.data[0].SetValue(0, Value::INTEGER(42));
+	output.data[0].SetValue(0, Value::INTEGER(0));
 	output.SetCardinality(1);
 	state.done = true;
 }
@@ -171,20 +266,6 @@ void TeradataScan::Register(DatabaseInstance &db) {
 
 	ExtensionUtil::RegisterFunction(db, function);
 }
-
-
-enum class DBFCommand : uint8_t {
-	InitiateRequest = DBFIRQ,
-	ContinueRequest = DBFCON,
-	InitiateProtocolFunction = DBFIWPF,
-	Rewind = DBFREW,
-	EndRequest = DBFERQ,
-	AbortRequest = DBFABT,
-	Disconnect = DBFDSC,
-	Command = DBFCMD,
-	Fetch = DBFFET,
-};
-
 
 
 /*
