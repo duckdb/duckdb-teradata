@@ -10,10 +10,10 @@ namespace duckdb {
 // UTIL
 //------------------------------------------------------------------------------
 
-class TeradataConnection {
+class TeradataRequestConnection {
 public:
 	enum class State : uint8_t { NO_SESSION = 0, STANDBY, IN_REQUEST };
-	TeradataConnection() = default;
+	TeradataRequestConnection() = default;
 
 	void Connect();
 
@@ -25,7 +25,7 @@ public:
 
 	void Disconnect();
 
-	~TeradataConnection() {
+	~TeradataRequestConnection() {
 		Disconnect();
 	}
 
@@ -38,9 +38,9 @@ private:
 	char cnta[4] = {};
 };
 
-void TeradataConnection::Connect() {
+void TeradataRequestConnection::Connect() {
 	// TODO: Check state
-	state =	State::NO_SESSION;
+	state = State::NO_SESSION;
 
 	dbc.change_opts = 'Y';
 	dbc.resp_mode = 'R'; // 'Record' mode
@@ -54,16 +54,16 @@ void TeradataConnection::Connect() {
 	dbc.save_resp_buf = 'N';
 	dbc.two_resp_bufs = 'N';
 	dbc.ret_time = 'N';
-	dbc.parcel_mode = 'Y'; // 'Parcel' mode (?);
+	dbc.parcel_mode = 'Y';   // 'Parcel' mode (?);
 	dbc.wait_for_resp = 'Y'; // suspend the application until the response is received
-	dbc.req_proc_opt = 'E'; // 'Execute' mode, dont prepare.
+	dbc.req_proc_opt = 'E';  // 'Execute' mode, dont prepare.
 
 	// Set the total length
 	dbc.total_len = sizeof(DBCAREA);
 
 	Int32 result = EM_OK;
 	DBCHINI(&result, cnta, &dbc); // Try to initialize the DBCAREA
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		// Failed to initialize the DBCAREA we cannot connect
 		throw InternalException("Failed to initialize DBCAREA");
 	}
@@ -78,7 +78,7 @@ void TeradataConnection::Connect() {
 
 	// Try to connect
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		// TODO: Terminate connection on error
 		const string error_msg(dbc.msg_text, dbc.msg_len);
 		throw IOException("Failed to connect to Teradata database: %s", error_msg);
@@ -98,7 +98,7 @@ void TeradataConnection::Connect() {
 	// Now call the fetch command
 	DBCHCL(&result, cnta, &dbc);
 	// Check the return code
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		// TODO: Terminate the request properly
 		const string error_msg(dbc.msg_text, dbc.msg_len);
 		throw IOException("Connection failed: %s", error_msg);
@@ -107,7 +107,7 @@ void TeradataConnection::Connect() {
 	// Now end the request
 	dbc.func = DBFERQ;
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		// TODO: Resubmit the request
 		throw IOException("Failed to end request");
 	}
@@ -117,14 +117,14 @@ void TeradataConnection::Connect() {
 	state = State::STANDBY;
 }
 
-void TeradataConnection::BeginRequest(const string &query) {
-	if(state != State::STANDBY) {
+void TeradataRequestConnection::BeginRequest(const string &query) {
+	if (state != State::STANDBY) {
 		throw IOException("Not connected to teradata!");
 	}
 
-	dbc.func = DBFIRQ; // initiate request
-	dbc.change_opts = 'Y'; // change options to indicate that we want to change the options (to indicator mode)
-	dbc.resp_mode = 'I'; // indicator record mode
+	dbc.func = DBFIRQ;      // initiate request
+	dbc.change_opts = 'Y';  // change options to indicate that we want to change the options (to indicator mode)
+	dbc.resp_mode = 'I';    // indicator record mode
 	dbc.req_proc_opt = 'E'; // execute mode
 	dbc.i_sess_id = session_id;
 
@@ -136,7 +136,7 @@ void TeradataConnection::BeginRequest(const string &query) {
 
 	int32_t result = EM_OK;
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		throw IOException("Failed to execute SQL: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 
@@ -148,12 +148,12 @@ void TeradataConnection::BeginRequest(const string &query) {
 	dbc.fet_max_data_len = sizeof(buf);
 
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 
 	// Now what
-	if(dbc.fet_parcel_flavor != PclSUCCESS) {
+	if (dbc.fet_parcel_flavor != PclSUCCESS) {
 		// TODO: Check error parcel instead of just failing
 		throw IOException("Failed to execute SQL: %s");
 	}
@@ -161,8 +161,8 @@ void TeradataConnection::BeginRequest(const string &query) {
 	state = State::IN_REQUEST;
 }
 
-bool TeradataConnection::Fetch(DataChunk &chunk) {
-	if(state != State::IN_REQUEST) {
+bool TeradataRequestConnection::Fetch(DataChunk &chunk) {
+	if (state != State::IN_REQUEST) {
 		throw InternalException("Not connected to teradata!");
 	}
 
@@ -178,10 +178,10 @@ bool TeradataConnection::Fetch(DataChunk &chunk) {
 	// This is how much capacity we have in the chunk
 	idx_t row_idx = 0;
 
-	while(row_idx < STANDARD_VECTOR_SIZE) {
+	while (row_idx < STANDARD_VECTOR_SIZE) {
 
 		DBCHCL(&result, cnta, &dbc);
-		if(result != EM_OK) {
+		if (result != EM_OK) {
 			throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
 		}
 
@@ -201,11 +201,11 @@ bool TeradataConnection::Fetch(DataChunk &chunk) {
 			// p. 1144, 1143, 1145
 			auto record_ptr = buf + validity_bytes;
 
-			for(idx_t col_idx = 0; col_idx < chunk.ColumnCount(); col_idx++) {
+			for (idx_t col_idx = 0; col_idx < chunk.ColumnCount(); col_idx++) {
 				const auto is_null = (buf[col_idx / 8] & (1 << (col_idx % 8))) != 0;
 
 				auto &col_vec = chunk.data[col_idx];
-				if(is_null) {
+				if (is_null) {
 					FlatVector::SetNull(col_vec, row_idx, true);
 				} else {
 					const auto data_ptr = FlatVector::GetData<int32_t>(col_vec);
@@ -223,7 +223,7 @@ bool TeradataConnection::Fetch(DataChunk &chunk) {
 		}
 		case PclENDSTATEMENT: {
 			// TODO: Handle multiple statement (throw?)
-			//printf("End statement");
+			// printf("End statement");
 			break;
 		}
 		default: {
@@ -235,22 +235,20 @@ bool TeradataConnection::Fetch(DataChunk &chunk) {
 	return true;
 }
 
-void TeradataConnection::FetchAndExpectParcel(idx_t parcel) {
+void TeradataRequestConnection::FetchAndExpectParcel(idx_t parcel) {
 	Int32 result = EM_OK;
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
 	}
-	if(dbc.fet_parcel_flavor != parcel) {
+	if (dbc.fet_parcel_flavor != parcel) {
 		throw IOException("Expected parcel flavor %d, got %d", parcel, dbc.fet_parcel_flavor);
 	}
 }
 
-
-
-enum class TypeVariant { STANDARD, NULLABLE, PARAM_IN, PARAM_INOUT, PARAM_OUT};
+enum class TypeVariant { STANDARD, NULLABLE, PARAM_IN, PARAM_INOUT, PARAM_OUT };
 struct TeradataColumnType {
-	const char* name;
+	const char *name;
 	LogicalType type;
 	TypeVariant variant;
 };
@@ -260,18 +258,28 @@ static TeradataColumnType GetTeradataType(PclInt16 type) {
 	// Param in is 500 + the standard type
 	// Param inout is 501 + the standard type
 	// Param out is 502 + the standard type
-	switch(type) {
-		case 472: return { "LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::STANDARD };
-		case 473: return { "LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::NULLABLE };
-		case 972: return { "LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::PARAM_IN };
-		case 973: return { "LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::PARAM_INOUT };
-		case 974: return { "LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::PARAM_OUT };
+	switch (type) {
+	case 472:
+		return {"LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::STANDARD};
+	case 473:
+		return {"LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::NULLABLE};
+	case 972:
+		return {"LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::PARAM_IN};
+	case 973:
+		return {"LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::PARAM_INOUT};
+	case 974:
+		return {"LONGVARGRAPHIC", LogicalType::INVALID, TypeVariant::PARAM_OUT};
 
-		case 480: return { "FLOAT", LogicalType::FLOAT, TypeVariant::STANDARD };
-		case 481: return { "FLOAT", LogicalType::FLOAT, TypeVariant::NULLABLE };
-		case 980: return { "FLOAT", LogicalType::FLOAT, TypeVariant::PARAM_IN };
-		case 981: return { "FLOAT", LogicalType::FLOAT, TypeVariant::PARAM_INOUT };
-		case 982: return { "FLOAT", LogicalType::FLOAT, TypeVariant::PARAM_OUT };
+	case 480:
+		return {"FLOAT", LogicalType::FLOAT, TypeVariant::STANDARD};
+	case 481:
+		return {"FLOAT", LogicalType::FLOAT, TypeVariant::NULLABLE};
+	case 980:
+		return {"FLOAT", LogicalType::FLOAT, TypeVariant::PARAM_IN};
+	case 981:
+		return {"FLOAT", LogicalType::FLOAT, TypeVariant::PARAM_INOUT};
+	case 982:
+		return {"FLOAT", LogicalType::FLOAT, TypeVariant::PARAM_OUT};
 
 		/*
 		case 484: return { "DECIMAL", LogicalType::DECIMAL, TypeVariant::STANDARD };
@@ -281,74 +289,119 @@ static TeradataColumnType GetTeradataType(PclInt16 type) {
 		case 986: return { "DECIMAL", LogicalType::DECIMAL, TypeVariant::PARAM_OUT };
 		*/
 
-		case 496: return { "INTEGER", LogicalType::INTEGER, TypeVariant::STANDARD };
-		case 497: return { "INTEGER", LogicalType::INTEGER, TypeVariant::NULLABLE };
-		case 996: return { "INTEGER", LogicalType::INTEGER, TypeVariant::PARAM_IN };
-		case 997: return { "INTEGER", LogicalType::INTEGER, TypeVariant::PARAM_INOUT };
-		case 998: return { "INTEGER", LogicalType::INTEGER, TypeVariant::PARAM_OUT };
+	case 496:
+		return {"INTEGER", LogicalType::INTEGER, TypeVariant::STANDARD};
+	case 497:
+		return {"INTEGER", LogicalType::INTEGER, TypeVariant::NULLABLE};
+	case 996:
+		return {"INTEGER", LogicalType::INTEGER, TypeVariant::PARAM_IN};
+	case 997:
+		return {"INTEGER", LogicalType::INTEGER, TypeVariant::PARAM_INOUT};
+	case 998:
+		return {"INTEGER", LogicalType::INTEGER, TypeVariant::PARAM_OUT};
 
-		case 500: return { "SMALLINT", LogicalType::SMALLINT, TypeVariant::STANDARD };
-		case 501: return { "SMALLINT", LogicalType::SMALLINT, TypeVariant::NULLABLE };
-		case 1000: return { "SMALLINT", LogicalType::SMALLINT, TypeVariant::PARAM_IN };
-		case 1001: return { "SMALLINT", LogicalType::SMALLINT, TypeVariant::PARAM_INOUT };
-		case 1002: return { "SMALLINT", LogicalType::SMALLINT, TypeVariant::PARAM_OUT };
+	case 500:
+		return {"SMALLINT", LogicalType::SMALLINT, TypeVariant::STANDARD};
+	case 501:
+		return {"SMALLINT", LogicalType::SMALLINT, TypeVariant::NULLABLE};
+	case 1000:
+		return {"SMALLINT", LogicalType::SMALLINT, TypeVariant::PARAM_IN};
+	case 1001:
+		return {"SMALLINT", LogicalType::SMALLINT, TypeVariant::PARAM_INOUT};
+	case 1002:
+		return {"SMALLINT", LogicalType::SMALLINT, TypeVariant::PARAM_OUT};
 
-		case 600: return { "BIGINT", LogicalType::BIGINT, TypeVariant::STANDARD };
-		case 601: return { "BIGINT", LogicalType::BIGINT, TypeVariant::NULLABLE };
-		case 1100: return { "BIGINT", LogicalType::BIGINT, TypeVariant::PARAM_IN };
-		case 1101: return { "BIGINT", LogicalType::BIGINT, TypeVariant::PARAM_INOUT };
-		case 1102: return { "BIGINT", LogicalType::BIGINT, TypeVariant::PARAM_OUT };
+	case 600:
+		return {"BIGINT", LogicalType::BIGINT, TypeVariant::STANDARD};
+	case 601:
+		return {"BIGINT", LogicalType::BIGINT, TypeVariant::NULLABLE};
+	case 1100:
+		return {"BIGINT", LogicalType::BIGINT, TypeVariant::PARAM_IN};
+	case 1101:
+		return {"BIGINT", LogicalType::BIGINT, TypeVariant::PARAM_INOUT};
+	case 1102:
+		return {"BIGINT", LogicalType::BIGINT, TypeVariant::PARAM_OUT};
 
-		case 688: return { "VARBYTE", LogicalType::BLOB, TypeVariant::STANDARD };
-		case 689: return { "VARBYTE", LogicalType::BLOB, TypeVariant::NULLABLE };
-		case 1188: return { "VARBYTE", LogicalType::BLOB, TypeVariant::PARAM_IN };
-		case 1189: return { "VARBYTE", LogicalType::BLOB, TypeVariant::PARAM_INOUT };
-		case 1190: return { "VARBYTE", LogicalType::BLOB, TypeVariant::PARAM_OUT };
+	case 688:
+		return {"VARBYTE", LogicalType::BLOB, TypeVariant::STANDARD};
+	case 689:
+		return {"VARBYTE", LogicalType::BLOB, TypeVariant::NULLABLE};
+	case 1188:
+		return {"VARBYTE", LogicalType::BLOB, TypeVariant::PARAM_IN};
+	case 1189:
+		return {"VARBYTE", LogicalType::BLOB, TypeVariant::PARAM_INOUT};
+	case 1190:
+		return {"VARBYTE", LogicalType::BLOB, TypeVariant::PARAM_OUT};
 
-		case 692: return { "BYTE", LogicalType::UTINYINT, TypeVariant::STANDARD };
-		case 693: return { "BYTE", LogicalType::UTINYINT, TypeVariant::NULLABLE };
-		case 1192: return { "BYTE", LogicalType::UTINYINT, TypeVariant::PARAM_IN };
-		case 1193: return { "BYTE", LogicalType::UTINYINT, TypeVariant::PARAM_INOUT };
-		case 1194: return { "BYTE", LogicalType::UTINYINT, TypeVariant::PARAM_OUT };
+	case 692:
+		return {"BYTE", LogicalType::UTINYINT, TypeVariant::STANDARD};
+	case 693:
+		return {"BYTE", LogicalType::UTINYINT, TypeVariant::NULLABLE};
+	case 1192:
+		return {"BYTE", LogicalType::UTINYINT, TypeVariant::PARAM_IN};
+	case 1193:
+		return {"BYTE", LogicalType::UTINYINT, TypeVariant::PARAM_INOUT};
+	case 1194:
+		return {"BYTE", LogicalType::UTINYINT, TypeVariant::PARAM_OUT};
 
-		case 697: return { "LONGVARBYTE", LogicalType::BLOB, TypeVariant::STANDARD };
-		case 698: return { "LONGVARBYTE", LogicalType::BLOB, TypeVariant::NULLABLE };
-		case 1197: return { "LONGVARBYTE", LogicalType::BLOB, TypeVariant::PARAM_IN };
-		case 1198: return { "LONGVARBYTE", LogicalType::BLOB, TypeVariant::PARAM_INOUT };
-		case 1199: return { "LONGVARBYTE", LogicalType::BLOB, TypeVariant::PARAM_OUT };
+	case 697:
+		return {"LONGVARBYTE", LogicalType::BLOB, TypeVariant::STANDARD};
+	case 698:
+		return {"LONGVARBYTE", LogicalType::BLOB, TypeVariant::NULLABLE};
+	case 1197:
+		return {"LONGVARBYTE", LogicalType::BLOB, TypeVariant::PARAM_IN};
+	case 1198:
+		return {"LONGVARBYTE", LogicalType::BLOB, TypeVariant::PARAM_INOUT};
+	case 1199:
+		return {"LONGVARBYTE", LogicalType::BLOB, TypeVariant::PARAM_OUT};
 
-		case 748: return { "DATE (A)", LogicalType::INVALID, TypeVariant::STANDARD };
-		case 749: return { "DATE (A)", LogicalType::INVALID, TypeVariant::NULLABLE };
-		case 1248: return { "DATE (A)", LogicalType::INVALID, TypeVariant::PARAM_IN };
-		case 1249: return { "DATE (A)", LogicalType::INVALID, TypeVariant::PARAM_INOUT };
-		case 1250: return { "DATE (A)", LogicalType::INVALID, TypeVariant::PARAM_OUT };
+	case 748:
+		return {"DATE (A)", LogicalType::INVALID, TypeVariant::STANDARD};
+	case 749:
+		return {"DATE (A)", LogicalType::INVALID, TypeVariant::NULLABLE};
+	case 1248:
+		return {"DATE (A)", LogicalType::INVALID, TypeVariant::PARAM_IN};
+	case 1249:
+		return {"DATE (A)", LogicalType::INVALID, TypeVariant::PARAM_INOUT};
+	case 1250:
+		return {"DATE (A)", LogicalType::INVALID, TypeVariant::PARAM_OUT};
 
-		case 752: return { "DATE (B)", LogicalType::INVALID, TypeVariant::STANDARD };
-		case 753: return { "DATE (B)", LogicalType::INVALID, TypeVariant::NULLABLE };
-		case 1252: return { "DATE (B)", LogicalType::INVALID, TypeVariant::PARAM_IN };
-		case 1253: return { "DATE (B)", LogicalType::INVALID, TypeVariant::PARAM_INOUT };
-		case 1254: return { "DATE (B)", LogicalType::INVALID, TypeVariant::PARAM_OUT };
+	case 752:
+		return {"DATE (B)", LogicalType::INVALID, TypeVariant::STANDARD};
+	case 753:
+		return {"DATE (B)", LogicalType::INVALID, TypeVariant::NULLABLE};
+	case 1252:
+		return {"DATE (B)", LogicalType::INVALID, TypeVariant::PARAM_IN};
+	case 1253:
+		return {"DATE (B)", LogicalType::INVALID, TypeVariant::PARAM_INOUT};
+	case 1254:
+		return {"DATE (B)", LogicalType::INVALID, TypeVariant::PARAM_OUT};
 
-		case 756: return { "BYTEINT", LogicalType::TINYINT, TypeVariant::STANDARD };
-		case 757: return { "BYTEINT", LogicalType::TINYINT, TypeVariant::NULLABLE };
-		case 1256: return { "BYTEINT", LogicalType::TINYINT, TypeVariant::PARAM_IN };
-		case 1257: return { "BYTEINT", LogicalType::TINYINT, TypeVariant::PARAM_INOUT };
-		case 1258: return { "BYTEINT", LogicalType::TINYINT, TypeVariant::PARAM_OUT };
+	case 756:
+		return {"BYTEINT", LogicalType::TINYINT, TypeVariant::STANDARD};
+	case 757:
+		return {"BYTEINT", LogicalType::TINYINT, TypeVariant::NULLABLE};
+	case 1256:
+		return {"BYTEINT", LogicalType::TINYINT, TypeVariant::PARAM_IN};
+	case 1257:
+		return {"BYTEINT", LogicalType::TINYINT, TypeVariant::PARAM_INOUT};
+	case 1258:
+		return {"BYTEINT", LogicalType::TINYINT, TypeVariant::PARAM_OUT};
 
-		default:
-			// TODO: More types
-			throw NotImplementedException("Unknown data type: %d", type);
+	default:
+		// TODO: More types
+		throw NotImplementedException("Unknown data type: %d", type);
 	}
 }
 
-void TeradataConnection::Prepare(const string &query, vector<string> &names, vector<LogicalType> &types) {
-	if(state != State::STANDBY) {
+void TeradataRequestConnection::Prepare(const string &query, vector<string> &names, vector<LogicalType> &types) {
+	if (state != State::STANDBY) {
 		throw IOException("Not connected to teradata!");
 	}
 
-	dbc.func = DBFIRQ; // initiate request
-	dbc.change_opts = 'Y'; // change options to indicate that we want to change the options (to indicator mode)
-	dbc.resp_mode = 'I'; // indicator record mode
+	dbc.func = DBFIRQ;      // initiate request
+	dbc.change_opts = 'Y';  // change options to indicate that we want to change the options (to indicator mode)
+	dbc.resp_mode = 'I';    // indicator record mode
 	dbc.req_proc_opt = 'P'; // prepare mode
 	dbc.i_sess_id = session_id;
 
@@ -360,7 +413,7 @@ void TeradataConnection::Prepare(const string &query, vector<string> &names, vec
 
 	int32_t result = EM_OK;
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		throw IOException("Failed to execute SQL: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 
@@ -379,19 +432,19 @@ void TeradataConnection::Prepare(const string &query, vector<string> &names, vec
 
 	// Parse the prepinfo
 	auto beg_ptr = buf;
-	//auto end_ptr = buf + dbc.fet_ret_data_len;
+	// auto end_ptr = buf + dbc.fet_ret_data_len;
 	CliPrepInfoType info = {};
 	memcpy(&info, beg_ptr, sizeof(CliPrepInfoType));
 	beg_ptr += sizeof(CliPrepInfoType);
 
 	// Loop for the columns (ignore summaries for now)
-	for(PclInt16 col_idx = 0; col_idx < info.ColumnCount; col_idx++) {
+	for (PclInt16 col_idx = 0; col_idx < info.ColumnCount; col_idx++) {
 		CliPrepColInfoType col_info = {};
 		memcpy(&col_info, beg_ptr, sizeof(CliPrepColInfoType));
 		beg_ptr += sizeof(CliPrepColInfoType);
 
 		auto ttype = GetTeradataType(col_info.DataType);
-		if(ttype.type.id() == LogicalTypeId::INVALID) {
+		if (ttype.type.id() == LogicalTypeId::INVALID) {
 			throw NotImplementedException("Unsupported Teradata Type: '%s'", ttype.name);
 		}
 
@@ -433,14 +486,13 @@ void TeradataConnection::Prepare(const string &query, vector<string> &names, vec
 	dbc.func = DBFERQ;
 	dbc.i_req_id = dbc.o_req_id;
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		throw IOException("Failed to end request: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 }
 
-
-void TeradataConnection::EndRequest() {
-	if(state != State::IN_REQUEST) {
+void TeradataRequestConnection::EndRequest() {
+	if (state != State::IN_REQUEST) {
 		throw InternalException("Not in request!");
 	}
 
@@ -451,7 +503,7 @@ void TeradataConnection::EndRequest() {
 	Int32 result = EM_OK;
 
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		// TODO: Resubmit the request
 		throw IOException("Failed to end request");
 	}
@@ -459,8 +511,8 @@ void TeradataConnection::EndRequest() {
 	state = State::STANDBY;
 }
 
-void TeradataConnection::Disconnect() {
-	if(state == State::NO_SESSION) {
+void TeradataRequestConnection::Disconnect() {
+	if (state == State::NO_SESSION) {
 		return;
 	}
 
@@ -468,7 +520,7 @@ void TeradataConnection::Disconnect() {
 	dbc.i_sess_id = session_id;
 	Int32 result = EM_OK;
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		// Can this even happen?
 		throw IOException("Failed to disconnect from Teradata database: %s", string(dbc.msg_text, dbc.msg_len));
 	}
@@ -477,20 +529,20 @@ void TeradataConnection::Disconnect() {
 //------------------------------------------------------------------------------
 // Bind
 //------------------------------------------------------------------------------
-struct TeradataScanData final : public TableFunctionData  {
-	unique_ptr<TeradataConnection> conn;
+struct TeradataScanData final : public TableFunctionData {
+	unique_ptr<TeradataRequestConnection> conn;
 };
 
 static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-	vector<LogicalType> &return_types, vector<string> &names) {
+                                     vector<LogicalType> &return_types, vector<string> &names) {
 	auto result = make_uniq<TeradataScanData>();
 
-	result->conn = make_uniq<TeradataConnection>();
+	result->conn = make_uniq<TeradataRequestConnection>();
 	result->conn->Connect();
 	result->conn->Prepare("SELECT 2, 42", names, return_types);
 
-	//return_types.push_back(LogicalType::INTEGER);
-	//names.push_back("value");
+	// return_types.push_back(LogicalType::INTEGER);
+	// names.push_back("value");
 
 	return std::move(result);
 }
@@ -524,7 +576,7 @@ static void Execute(ClientContext &context, TableFunctionInput &data, DataChunk 
 	}
 
 	const auto keep_going = bdata.conn->Fetch(output);
-	if(!keep_going) {
+	if (!keep_going) {
 		bdata.conn->EndRequest();
 		state.done = true;
 	}
@@ -547,4 +599,4 @@ void TeradataScan::Register(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, function);
 }
 
-}
+} // namespace duckdb

@@ -16,4 +16,4 @@ struct TeradataSecret {
 	string password;
 };
 
-}
+} // namespace duckdb

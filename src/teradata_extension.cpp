@@ -10,6 +10,8 @@
 
 #include "teradata_scan.hpp"
 
+#include <teradata_storage.hpp>
+
 namespace duckdb {
 
 inline void QuackScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -25,6 +27,8 @@ static void LoadInternal(DatabaseInstance &instance) {
 	ExtensionUtil::RegisterFunction(instance, quack_scalar_function);
 
 	TeradataScan::Register(instance);
+
+	instance.config.storage_extensions["teradata"] = make_uniq<TeradataStorageExtension>();
 }
 
 void TeradataExtension::Load(DuckDB &db) {

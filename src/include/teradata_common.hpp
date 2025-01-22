@@ -12,20 +12,20 @@
 #define NOT_CONNECTED 1
 #define OK            0
 #define STOP          1
-#define FAILED       -1
+#define FAILED        -1
 
 #ifdef WIN32
-__declspec(dllimport) char   COPCLIVersion[];
-__declspec(dllimport) char   COPMTDPVersion[];
-__declspec(dllimport) char   COPMOSIosVersion[];
-__declspec(dllimport) char   COPMOSIDEPVersion[];
-__declspec(dllimport) char   OSERRVersion[];
+__declspec(dllimport) char COPCLIVersion[];
+__declspec(dllimport) char COPMTDPVersion[];
+__declspec(dllimport) char COPMOSIosVersion[];
+__declspec(dllimport) char COPMOSIDEPVersion[];
+__declspec(dllimport) char OSERRVersion[];
 #else
-extern char   COPCLIVersion[];
-extern char   COPMTDPVersion[];
-extern char   COPMOSIosVersion[];
-extern char   COPMOSIDEPVersion[];
-extern char   OSERRVersion[];
+extern char COPCLIVersion[];
+extern char COPMTDPVersion[];
+extern char COPMOSIosVersion[];
+extern char COPMOSIDEPVersion[];
+extern char OSERRVersion[];
 #endif
 
 namespace duckdb {

@@ -35,10 +35,10 @@ bool TeradataSecret::TryGet(ClientContext &context, const string &name, Teradata
 	const auto transaction = CatalogTransaction::GetSystemCatalogTransaction(context);
 
 	const auto secret_entry = secret_manager.GetSecretByName(transaction, name);
-	if(!secret_entry) {
+	if (!secret_entry) {
 		return false;
 	}
-	if(secret_entry->secret->GetType() != TeradataSecret::TYPE) {
+	if (secret_entry->secret->GetType() != TeradataSecret::TYPE) {
 		return false;
 	}
 	const auto &kv_secret = dynamic_cast<const KeyValueSecret &>(*secret_entry->secret);
@@ -74,4 +74,4 @@ void TeradataSecret::Register(DatabaseInstance &db) {
 	ExtensionUtil::RegisterFunction(db, secret_constructor);
 }
 
-}
+} // namespace duckdb

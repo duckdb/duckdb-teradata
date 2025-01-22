@@ -8,4 +8,4 @@ struct TeradataScan {
 	static void Register(DatabaseInstance &db);
 };
 
-}
+} // namespace duckdb
