@@ -1,6 +1,10 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "teradata_extension.hpp"
+#include "teradata_scan.hpp"
+#include "teradata_query.hpp"
+#include "teradata_storage.hpp"
+
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -10,23 +14,16 @@
 
 namespace duckdb {
 
-inline void QuackScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &name_vector = args.data[0];
-	UnaryExecutor::Execute<string_t, string_t>(name_vector, result, args.size(), [&](string_t name) {
-		return StringVector::AddString(result, "Quack " + name.GetString() + " 🐥");
-		;
-	});
-}
-
-static void LoadInternal(DatabaseInstance &instance) {
-	// Register a scalar function
-	auto quack_scalar_function = ScalarFunction("quack", {LogicalType::VARCHAR}, LogicalType::VARCHAR, QuackScalarFun);
-	ExtensionUtil::RegisterFunction(instance, quack_scalar_function);
-}
-
 void TeradataExtension::Load(DuckDB &db) {
-	LoadInternal(*db.instance);
+	auto &instance = *db.instance;
+
+	// Register Teradata functions
+	TeradataScan::Register(instance);
+	TeradataQueryFunction::Register(instance);
+
+	instance.config.storage_extensions["teradata"] = make_uniq<TeradataStorageExtension>();
 }
+
 std::string TeradataExtension::Name() {
 	return "teradata";
 }
