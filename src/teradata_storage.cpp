@@ -10,7 +10,7 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 
 	// TODO: Parse options, secrets, etc
 	// We could pass in a default_schema to load here
-	
+
 	// Default: "127.0.0.1/dbc,dbc";
 	string connection_string = info.path;
 

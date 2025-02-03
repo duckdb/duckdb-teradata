@@ -2,7 +2,6 @@
 #include "teradata_common.hpp"
 #include "duckdb/common/types.hpp"
 
-
 namespace duckdb {
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -159,4 +158,4 @@ inline TeradataColumnType TeradataColumnType::Get(PclInt16 type) {
 	}
 }
 
-}
+} // namespace duckdb

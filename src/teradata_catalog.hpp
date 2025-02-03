@@ -12,6 +12,7 @@ public:
 public:
 	// TODO: this should not be exposed like this. We should expose a pool instead?
 	TeradataConnection &GetConnection() const;
+
 public:
 	void Initialize(bool load_builtin) override;
 

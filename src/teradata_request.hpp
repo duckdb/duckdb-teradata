@@ -4,21 +4,23 @@
 
 namespace duckdb {
 
-enum class TeradataRequestStatus : uint8_t {
-	READY, OPEN, DONE, CLOSED
-};
+enum class TeradataRequestStatus : uint8_t { READY, OPEN, DONE, CLOSED };
 
 class TeradataRequest {
 public:
-	~TeradataRequest() { Close(); }
+	~TeradataRequest() {
+		Close();
+	}
 	void Close();
-	TeradataRequestStatus GetStatus() const { return status; }
+	TeradataRequestStatus GetStatus() const {
+		return status;
+	}
+
 protected:
 	explicit TeradataRequest(Int32 session_id_p);
 	void FetchAndExpectParcel(PclFlavor expected);
+
 protected:
-
-
 	DBCAREA dbc;
 	Int32 session_id;
 	char cnta[4];
@@ -37,4 +39,4 @@ public:
 	void FetchNextChunk(DataChunk &chunk);
 };
 
-}
+} // namespace duckdb

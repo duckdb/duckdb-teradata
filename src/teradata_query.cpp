@@ -22,9 +22,9 @@ struct TeradataQueryData final : TableFunctionData {
 };
 
 static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableFunctionBindInput &input,
-	vector<LogicalType> &return_types, vector<string> &names) {
+                                                  vector<LogicalType> &return_types, vector<string> &names) {
 
-	if(input.inputs[0].IsNull() || input.inputs[1].IsNull()) {
+	if (input.inputs[0].IsNull() || input.inputs[1].IsNull()) {
 		throw BinderException("Parameters to teradata_query cannot be NULL");
 	}
 
@@ -33,12 +33,12 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 	// Look up the database to query
 	auto &db_manager = DatabaseManager::Get(context);
 	auto db = db_manager.GetDatabase(context, db_name);
-	if(!db) {
+	if (!db) {
 		throw BinderException("Failed to find attached database \"%s\" referenced in teradata_query", db_name);
 	}
 
 	auto &catalog = db->GetCatalog();
-	if(catalog.GetCatalogType() != "teradata") {
+	if (catalog.GetCatalogType() != "teradata") {
 		throw BinderException("Attached database \"%s\" does not refer to a Teradata database", db_name);
 	}
 
@@ -97,7 +97,7 @@ static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, 
 	// TODO: we should verify the schema, and force a refetch if the schema has changed in between the bind
 	// and the exec
 
-	if(state.request.GetStatus() == TeradataRequestStatus::OPEN) {
+	if (state.request.GetStatus() == TeradataRequestStatus::OPEN) {
 		state.request.FetchNextChunk(output);
 	} else {
 		output.SetCardinality(0);
@@ -118,6 +118,5 @@ void TeradataQueryFunction::Register(DatabaseInstance &db) {
 
 	ExtensionUtil::RegisterFunction(db, function);
 }
-
 
 } // namespace duckdb

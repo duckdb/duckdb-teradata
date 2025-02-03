@@ -22,7 +22,9 @@ public:
 	TeradataTransaction(TeradataCatalog &catalog, TransactionManager &manager, ClientContext &context);
 	~TeradataTransaction() override;
 
-	TeradataConnection &GetConnection() const { return con; }
+	TeradataConnection &GetConnection() const {
+		return con;
+	}
 
 	// TODO:
 	/*

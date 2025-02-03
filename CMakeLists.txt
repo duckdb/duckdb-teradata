@@ -24,32 +24,33 @@ set(EXTENSION_SOURCES
     src/teradata_query.cpp
     src/teradata_request.cpp)
 
-# Teradata
-# on macos
-if (APPLE)
-    set(TD_INCLUDE_DIR "/Library/Application\ Support/teradata/client/20.00/include")
-    set(TERADATA_LIBRARY_DIR "/Library/Application\ Support/teradata/client/20.00/lib")
+# Teradata on macos
+if(APPLE)
+  set(TD_INCLUDE_DIR
+      "/Library/Application\ Support/teradata/client/20.00/include")
+  set(TD_LIBRARY_DIR "/Library/Application\ Support/teradata/client/20.00/lib")
 endif()
 
 # on linux (ubuntu has the lib64 suffix)
-if (UNIX AND NOT APPLE)
-    set(TD_INCLUDE_DIR "/opt/teradata/client/20.00/include")
-    set(TERADATA_LIBRARY_DIR "/opt/teradata/client/20.00/lib64")
+if(UNIX AND NOT APPLE)
+  set(TD_INCLUDE_DIR "/opt/teradata/client/20.00/include")
+  set(TD_LIBRARY_DIR "/opt/teradata/client/20.00/lib64")
 endif()
 
 find_library(
   TD_CLIV2
   NAMES libcliv2 libcliv2.so libcliv2.dylib
-  PATHS ${TERADATA_LIBRARY_DIR} REQUIRED)
+  PATHS ${TD_LIBRARY_DIR} REQUIRED)
 find_library(
   TD_USR
   NAMES libtdusr libtdusr.so libtdusr.dylib
-  PATHS ${TERADATA_LIBRARY_DIR} REQUIRED)
+  PATHS ${TD_LIBRARY_DIR} REQUIRED)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include ${TD_INCLUDE_DIR})
+target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include
+                                                              ${TD_INCLUDE_DIR})
 target_include_directories(${EXTENSION_NAME} PRIVATE include ${TD_INCLUDE_DIR})
 
 target_link_libraries(${LOADABLE_EXTENSION_NAME} ${TD_CLIV2} ${TD_USR})

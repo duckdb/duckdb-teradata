@@ -3,20 +3,18 @@
 
 namespace duckdb {
 
-
 //----------------------------------------------------------------------------------------------------------------------
 // Teradata Request Base
 //----------------------------------------------------------------------------------------------------------------------
-TeradataRequest::TeradataRequest(Int32 session_id_p) :
-	session_id(session_id_p), status(TeradataRequestStatus::READY) {
+TeradataRequest::TeradataRequest(Int32 session_id_p) : session_id(session_id_p), status(TeradataRequestStatus::READY) {
 
 	// Set total length	of DBCAREA
 	dbc.total_len = sizeof(DBCAREA);
 
- 	Int32 result;
- 	DBCHINI(&result, cnta, &dbc);
- 	if(result != 0) {
- 		throw IOException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
+	Int32 result;
+	DBCHINI(&result, cnta, &dbc);
+	if (result != 0) {
+		throw IOException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 
 	// Setup session id
@@ -24,14 +22,14 @@ TeradataRequest::TeradataRequest(Int32 session_id_p) :
 }
 
 void TeradataRequest::Close() {
-	if(status == TeradataRequestStatus::READY || status == TeradataRequestStatus::CLOSED) {
+	if (status == TeradataRequestStatus::READY || status == TeradataRequestStatus::CLOSED) {
 		// We can only close an empty request
 		return;
 	}
 	Int32 result = EM_OK;
 	dbc.func = DBFERQ;
 	DBCHCL(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		throw IOException("Failed to close Teradata request");
 	}
 	status = TeradataRequestStatus::CLOSED;
@@ -73,7 +71,7 @@ TeradataPrepareRequest::TeradataPrepareRequest(Int32 session_id_p, const string 
 }
 
 void TeradataPrepareRequest::GetColumns(vector<string> &names, vector<LogicalType> &types) {
-	if(status != TeradataRequestStatus::OPEN) {
+	if (status != TeradataRequestStatus::OPEN) {
 		throw IOException("Cannot get columns from a closed request");
 	}
 
@@ -149,8 +147,7 @@ void TeradataPrepareRequest::GetColumns(vector<string> &names, vector<LogicalTyp
 // Teradata SQL	Request
 //----------------------------------------------------------------------------------------------------------------------
 
-TeradataSqlRequest::TeradataSqlRequest(Int32 session_id_p, const string &sql)
-	: TeradataRequest(session_id_p) {
+TeradataSqlRequest::TeradataSqlRequest(Int32 session_id_p, const string &sql) : TeradataRequest(session_id_p) {
 
 	dbc.func = DBFIRQ;      // initiate request
 	dbc.change_opts = 'Y';  // change options to indicate that we want to change the options (to indicator mode)
@@ -208,7 +205,7 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 
 		switch (dbc.fet_parcel_flavor) {
 		case PclDATAINFO: {
-			//printf("Got data info");
+			// printf("Got data info");
 			break;
 		}
 		case PclENDREQUEST: {
@@ -217,7 +214,7 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 			return;
 		}
 		case PclRECORD: {
-			//printf("Got record!");
+			// printf("Got record!");
 			// Within the Record parcel, each line of a table is separated from the next by hex 0D (decimal 13).
 			// Data conversion rules in p.1144
 			// p. 1144, 1143, 1145
@@ -256,7 +253,4 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 	}
 }
 
-
-
-
-}
+} // namespace duckdb
