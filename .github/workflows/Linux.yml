@@ -36,7 +36,8 @@ jobs:
         run: |
           wget https://test-bucket-ceiveran.s3.eu-west-1.amazonaws.com/td_linux.tar.gz
           tar -xvf td_linux.tar.gz
-          cd TeradataToolsAndUtilitiesBase && yes "a" | sudo ./setup.sh
+          cd TeradataToolsAndUtilitiesBase && yes "a" 2>/dev/null | sudo ./setup.sh
+          cd ..
 
       - uses: actions/checkout@v3
         with:
