@@ -1,9 +1,9 @@
 #pragma once
 
-#include "duckdb/transaction/transaction_manager.hpp"
-
 #include "teradata_catalog.hpp"
 #include "teradata_transaction.hpp"
+
+#include "duckdb/transaction/transaction_manager.hpp"
 
 namespace duckdb {
 

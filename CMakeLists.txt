@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 11)
 
 project(${TARGET_NAME})
 
-include_directories(src/include)
+include_directories(src)
 set(EXTENSION_SOURCES
     src/teradata_extension.cpp
     src/teradata_secret.cpp
@@ -20,7 +20,9 @@ set(EXTENSION_SOURCES
     src/teradata_catalog.cpp
     src/teradata_connection.cpp
     src/teradata_transaction_manager.cpp
-    src/teradata_transaction.cpp)
+    src/teradata_transaction.cpp
+    src/teradata_query.cpp
+    src/teradata_request.cpp)
 
 # Teradata
 set(TD_INCLUDE_DIR /Library/Application\ Support/teradata/client/20.00/include)

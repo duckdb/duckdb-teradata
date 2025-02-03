@@ -9,13 +9,11 @@
 #pragma once
 
 #include "duckdb/transaction/transaction.hpp"
-#include "teradata_catalog.hpp"
 
 namespace duckdb {
 
-// class PostgresCatalog;
-// class PostgresSchemaEntry;
-// class PostgresTableEntry;
+class TeradataCatalog;
+class TeradataConnection;
 
 enum class TeradataTransactionState { TRANSACTION_NOT_YET_STARTED, TRANSACTION_STARTED, TRANSACTION_FINISHED };
 
@@ -23,6 +21,8 @@ class TeradataTransaction final : public Transaction {
 public:
 	TeradataTransaction(TeradataCatalog &catalog, TransactionManager &manager, ClientContext &context);
 	~TeradataTransaction() override;
+
+	TeradataConnection &GetConnection() const { return con; }
 
 	// TODO:
 	/*
@@ -41,6 +41,10 @@ public:
 
 private:
 	TeradataTransactionState transaction_state;
+
+	// TODO: This shouldnt be passed like this
+	TeradataConnection &con;
+
 	/*
 	    PostgresPoolConnection connection;
 	    AccessMode access_mode;

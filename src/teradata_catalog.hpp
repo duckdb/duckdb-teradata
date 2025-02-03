@@ -1,15 +1,17 @@
 #pragma once
 #include "teradata_storage.hpp"
-
-#include <teradata_connection.hpp>
+#include "teradata_connection.hpp"
 
 namespace duckdb {
 
 class TeradataCatalog final : public Catalog {
 public:
-	explicit TeradataCatalog(AttachedDatabase &db);
+	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string);
 	~TeradataCatalog() override;
 
+public:
+	// TODO: this should not be exposed like this. We should expose a pool instead?
+	TeradataConnection &GetConnection() const;
 public:
 	void Initialize(bool load_builtin) override;
 
@@ -39,6 +41,7 @@ public:
 
 private:
 	unique_ptr<TeradataConnection> conn;
+	string path;
 };
 
 } // namespace duckdb

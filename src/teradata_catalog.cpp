@@ -8,15 +8,19 @@ namespace duckdb {
 // Initialization
 //----------------------------------------------------------------------------------------------------------------------
 
-TeradataCatalog::TeradataCatalog(AttachedDatabase &db) : Catalog(db) {
-	string logon = "127.0.0.1/dbc,dbc";
-	conn = make_uniq<TeradataConnection>(logon);
+TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string) : Catalog(db) {
+	conn = make_uniq<TeradataConnection>(logon_string);
+	path = logon_string;
 }
 
 TeradataCatalog::~TeradataCatalog() {
 }
 
 void TeradataCatalog::Initialize(bool load_builtin) {
+}
+
+TeradataConnection &TeradataCatalog::GetConnection() const {
+	return *conn;
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -84,15 +88,15 @@ DatabaseSize TeradataCatalog::GetDatabaseSize(ClientContext &context) {
 }
 
 bool TeradataCatalog::InMemory() {
-	throw NotImplementedException("TeradataCatalog::InMemory");
+	return false;
 }
 
 string TeradataCatalog::GetCatalogType() {
-	throw NotImplementedException("TeradataCatalog::GetCatalogType");
+	return "teradata";
 }
 
 string TeradataCatalog::GetDBPath() {
-	throw NotImplementedException("TeradataCatalog::GetDBPath");
+	return path;
 }
 
 } // namespace duckdb

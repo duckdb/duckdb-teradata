@@ -3,6 +3,7 @@
 # Extension from this repo
 duckdb_extension_load(teradata
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}
+    INCLUDE_DIR ${CMAKE_CURRENT_LIST_DIR}/src
     LOAD_TESTS
 )
 
