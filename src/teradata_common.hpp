@@ -2,6 +2,9 @@
 
 #include "duckdb.hpp"
 
+// Otherwise doesnt work on linux
+#define NO_CLIV2_ERROR_T
+
 // Teradata Includes
 #include <coptypes.h>
 #include <coperr.h>
