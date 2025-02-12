@@ -2,13 +2,18 @@
 #include "teradata_connection.hpp"
 #include "teradata_common.hpp"
 
+
+#include "teradata_schema_set.hpp"
+#include "teradata_schema_entry.hpp"
+#include "teradata_table_entry.hpp"
+
 namespace duckdb {
 
 //----------------------------------------------------------------------------------------------------------------------
 // Initialization
 //----------------------------------------------------------------------------------------------------------------------
 
-TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string) : Catalog(db) {
+TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string) : Catalog(db), schemas(*this) {
 	conn = make_uniq<TeradataConnection>(logon_string);
 	path = logon_string;
 }
@@ -32,7 +37,8 @@ optional_ptr<CatalogEntry> TeradataCatalog::CreateSchema(CatalogTransaction tran
 }
 
 void TeradataCatalog::ScanSchemas(ClientContext &context, std::function<void(SchemaCatalogEntry &)> callback) {
-	throw NotImplementedException("TeradataCatalog::ScanSchemas");
+	// Ok return a schema, with entries
+	schemas.Scan(context, [&](CatalogEntry &schema) { callback(schema.Cast<TeradataSchemaEntry>()); });
 }
 
 optional_ptr<SchemaCatalogEntry> TeradataCatalog::GetSchema(CatalogTransaction transaction, const string &schema_name,

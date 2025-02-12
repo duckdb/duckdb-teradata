@@ -1,6 +1,7 @@
 #pragma once
 #include "teradata_storage.hpp"
 #include "teradata_connection.hpp"
+#include "teradata_schema_set.hpp"
 
 namespace duckdb {
 
@@ -43,6 +44,9 @@ public:
 private:
 	unique_ptr<TeradataConnection> conn;
 	string path;
+
+	// The set of schemas in this database
+	duckdb::TeradataSchemaSet schemas;
 };
 
 } // namespace duckdb

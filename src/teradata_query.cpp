@@ -17,6 +17,7 @@ namespace duckdb {
 struct TeradataQueryData final : TableFunctionData {
 	vector<LogicalType> types;
 	vector<string> names;
+	vector<TeradataType> td_types;
 	string sql;
 	TeradataCatalog *catalog;
 };
@@ -56,14 +57,21 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 	const auto &con = transaction.GetConnection();
 	const auto sid = con.GetSessionId();
 
+	vector<TeradataType> td_types;
 	// Send a "prepare" request to Teradata to get the column names and types
 	{
 		TeradataPrepareRequest request(sid, sql);
-		request.GetColumns(names, return_types);
+		request.GetColumns(names, td_types);
+
+		// Convert to duckdb types
+		for(auto &td_type : td_types) {
+			return_types.push_back(td_type.GetDuckType());
+		}
 	}
 
 	auto result = make_uniq<TeradataQueryData>();
 	result->types = return_types;
+	result->td_types = std::move(td_types);
 	result->names = names;
 	result->sql = sql;
 	result->catalog = &td_catalog;
@@ -93,12 +101,13 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 //----------------------------------------------------------------------------------------------------------------------
 static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
 	auto &state = data.global_state->Cast<TeradataQueryState>();
+	auto &bdata = data.bind_data->Cast<TeradataQueryData>();
 
 	// TODO: we should verify the schema, and force a refetch if the schema has changed in between the bind
 	// and the exec
 
 	if (state.request.GetStatus() == TeradataRequestStatus::OPEN) {
-		state.request.FetchNextChunk(output);
+		state.request.FetchNextChunk(output, bdata.td_types);
 	} else {
 		output.SetCardinality(0);
 	}

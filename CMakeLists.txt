@@ -22,7 +22,13 @@ set(EXTENSION_SOURCES
     src/teradata_transaction_manager.cpp
     src/teradata_transaction.cpp
     src/teradata_query.cpp
-    src/teradata_request.cpp)
+    src/teradata_request.cpp
+    src/teradata_schema_entry.cpp
+    src/teradata_schema_set.cpp
+    src/teradata_catalog_set.cpp
+    src/teradata_table_set.cpp
+    src/teradata_table_entry.cpp
+)
 
 # Teradata on macos
 if(APPLE)

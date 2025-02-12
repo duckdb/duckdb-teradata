@@ -1,6 +1,7 @@
 #pragma once
 
 #include "teradata_common.hpp"
+#include "teradata_type.hpp"
 
 namespace duckdb {
 
@@ -25,18 +26,21 @@ protected:
 	Int32 session_id;
 	char cnta[4];
 	TeradataRequestStatus status;
+	vector<char> buffer;
 };
 
+// TODO: we should pass the connection to the request instead of the session_id
+// Then the request can reconnect if needed
 class TeradataPrepareRequest final : public TeradataRequest {
 public:
 	explicit TeradataPrepareRequest(Int32 session_id_p, const string &sql);
-	void GetColumns(vector<string> &names, vector<LogicalType> &types);
+	void GetColumns(vector<string> &names, vector<TeradataType> &types);
 };
 
 class TeradataSqlRequest final : public TeradataRequest {
 public:
 	explicit TeradataSqlRequest(Int32 session_id_p, const string &sql);
-	void FetchNextChunk(DataChunk &chunk);
+	void FetchNextChunk(DataChunk &chunk, const vector<TeradataType> &td_types);
 };
 
 } // namespace duckdb
