@@ -1,8 +1,6 @@
 #include "teradata_schema_set.hpp"
-
 #include "teradata_request.hpp"
 #include "teradata_catalog.hpp"
-
 #include "teradata_schema_entry.hpp"
 
 #include "duckdb/parser/parsed_data/create_schema_info.hpp"
@@ -31,7 +29,7 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 
 			CreateSchemaInfo info;
 			info.catalog = catalog.GetName();
-			info.schema = DEFAULT_SCHEMA;
+			info.schema = name;
 			info.comment = comment_vec.GetValue(row_idx);
 
 			entries[name] = make_uniq<TeradataSchemaEntry>(catalog, info);
