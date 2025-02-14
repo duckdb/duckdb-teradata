@@ -73,6 +73,10 @@ public:
 	void SetPrecision(int64_t precision_p) { precision = precision_p; }
 	void SetScale(int64_t scale_p) { scale = scale_p; }
 
+	bool IsDecimal() const {
+		return id == TeradataTypeId::DECIMAL;
+	}
+
 private:
 	TeradataTypeId id = TeradataTypeId::INVALID;
 	TeradataTypeVariant variant = TeradataTypeVariant::STANDARD;

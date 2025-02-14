@@ -93,7 +93,18 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 	auto &data = input.bind_data->Cast<TeradataQueryData>();
 
 	// Create a new Teradata request, passing the session ID and SQL
-	return make_uniq<TeradataQueryState>(data.catalog->GetConnection().GetSessionId(), data.sql);
+	auto result = make_uniq<TeradataQueryState>(data.catalog->GetConnection().GetSessionId(), data.sql);
+
+	// Check that the types are still the same, in case we need to rebind
+	auto &req_types = result->request.GetTypes();
+	for(idx_t i = 0; i < req_types.size(); i++) {
+		// TODO: Only look at TD id, but also check e.g. decimal precision
+		if(data.types[i] != req_types[i].GetDuckType()) {
+			throw InvalidInputException("Teradata query schema has changed since bind, please re-execute or re-prepare the query");
+		}
+	}
+
+	return std::move(result);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -101,13 +112,9 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 //----------------------------------------------------------------------------------------------------------------------
 static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
 	auto &state = data.global_state->Cast<TeradataQueryState>();
-	auto &bdata = data.bind_data->Cast<TeradataQueryData>();
-
-	// TODO: we should verify the schema, and force a refetch if the schema has changed in between the bind
-	// and the exec
 
 	if (state.request.GetStatus() == TeradataRequestStatus::OPEN) {
-		state.request.FetchNextChunk(output, bdata.td_types);
+		state.request.FetchNextChunk(output);
 	} else {
 		output.SetCardinality(0);
 	}

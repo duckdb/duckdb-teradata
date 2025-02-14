@@ -1,5 +1,6 @@
 #include "teradata_request.hpp"
 #include "teradata_type.hpp"
+#include "util/binary_reader.hpp"
 
 namespace duckdb {
 
@@ -392,12 +393,86 @@ TeradataSqlRequest::TeradataSqlRequest(Int32 session_id_p, const string &sql) : 
 	FetchAndExpectParcel(PclSUCCESS);
 
 	status = TeradataRequestStatus::OPEN;
+
+	// Make the first DataInfo fetch
+	FetchAndExpectParcel(PclDATAINFO);
+	// p.413 in the manual
+
+	// Now parse the data info and set the types
+	BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
+
+	// Read the number of columns
+	const auto field_count = reader.Read<uint16_t>();
+	for(uint16_t field_idx = 0; field_idx < field_count; field_idx++) {
+		const auto id_type = reader.Read<uint16_t>();
+
+		auto td_type = GetTeradataTypeFromParcel(id_type);
+
+		if(td_type.IsDecimal()) {
+			const auto precision = reader.Read<uint16_t>();
+			const auto scale = reader.Read<uint16_t>();
+			td_type.SetPrecision(precision);
+			td_type.SetScale(scale);
+		} else {
+			const auto length = reader.Read<uint16_t>();
+			td_type.SetLength(length);
+		}
+
+		td_types.push_back(td_type);
+	}
 }
 
-void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk, const vector<TeradataType> &td_types) {
+
+template<class T>
+static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
+	if(is_null) {
+		FlatVector::SetNull(col_vec, row_idx, true);
+		reader.Skip(sizeof(T));
+	} else {
+		FlatVector::GetData<T>(col_vec)[row_idx] = reader.Read<T>();
+	}
+}
+
+static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, TeradataType &td_type) {
+	const auto max_length = td_type.GetLength();
+
+	// The logic differs slightly depending on what type of varchar we are dealing with
+	switch(td_type.GetId()) {
+	case TeradataTypeId::VARCHAR: {
+		const auto length = reader.Read<uint16_t>();
+		if(is_null) {
+			FlatVector::SetNull(col_vec, row_idx, true);
+		} else {
+			// TODO: This is not enough, we need to handle shift-out characters
+			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
+			const auto text_ptr = reader.ReadBytes(length);
+			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, length);
+		}
+	} break;
+	case TeradataTypeId::CHAR: {
+		if(is_null) {
+			FlatVector::SetNull(col_vec, row_idx, true);
+			reader.Skip(max_length);
+		} else {
+			// For CHAR, the max length is the length of the field
+			// TODO: This is not enough, we need to handle shift-out characters
+			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
+			const auto text_ptr = reader.ReadBytes(max_length);
+			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, max_length);
+		}
+	} break;
+	default:
+		throw NotImplementedException("Unsupported String Type: '%s'", td_type.ToString());
+	}
+}
+
+void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 	if (status != TeradataRequestStatus::OPEN) {
 		throw InternalException("Cannot fetch from a closed request");
 	}
+
+	// Assert that we have the correct number of columns
+	D_ASSERT(chunk.ColumnCount() == td_types.size());
 
 	dbc.func = DBFFET;
 	dbc.fet_data_ptr = buffer.data();
@@ -405,7 +480,6 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk, const vector<TeradataT
 
 	Int32 result = EM_OK;
 
-	const idx_t validity_bytes = (chunk.ColumnCount() + 7) / 8;
 
 	// This is how much capacity we have in the chunk
 	idx_t row_idx = 0;
@@ -418,107 +492,40 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk, const vector<TeradataT
 		}
 
 		switch (dbc.fet_parcel_flavor) {
-		case PclDATAINFO: {
-			// printf("Got data info");
-			//
-			// TODO: We need to parse this to get the field lengths and shit
-			// p.413 in the manual
-			break;
-		}
 		case PclENDREQUEST: {
 			// No more rows remaining
 			status = TeradataRequestStatus::DONE;
 			return;
 		}
 		case PclRECORD: {
-			// printf("Got record!");
-			// Within the Record parcel, each line of a table is separated from the next by hex 0D (decimal 13).
-			// Data conversion rules in p.1144
-			// p. 1144, 1143, 1145
+			// p. 437 Record parcel (Indicator Mode)
 
-			// p. 19, DatabaseResponseMode
-			auto record_ptr = buffer.data() + validity_bytes;
+			// How many null indicators do we have?
+			const auto validity_bytes = (chunk.ColumnCount() + 7) / 8;
+
+			// Setup a reader for this row
+			BinaryReader data_reader(buffer.data() + validity_bytes, buffer.size());
 
 			for (idx_t col_idx = 0; col_idx < chunk.ColumnCount(); col_idx++) {
-				const auto is_null = (buffer[col_idx / 8] & (1 << (col_idx % 8))) != 0;
+				// The NullIndicators Field contains one bit for each item in the DataField,
+				// stored in the minimum number of 8-bit bytes required to hold them,
+				// with the unused bits in the rightmost byte set to zero.
+				// Each bit is matched on a positional basis to an item in the Data Field.
+				// That is, the ith bit in the NullIndicators Field corresponds to the ith item in the Data Field.
+				const auto byte_idx = col_idx / 8;
+				const auto bit_idx = (7 - (col_idx % 8));
+				const bool is_null = (buffer[byte_idx] & (1 << bit_idx)) != 0;
 
 				auto &col_vec = chunk.data[col_idx];
-				auto &td_type = td_types[col_idx];
 
-				// Switch on type
+				// Convert Type
 				switch (col_vec.GetType().id()) {
-				case LogicalTypeId::TINYINT: {
-					if(is_null) {
-						FlatVector::SetNull(col_vec, row_idx, true);
-					} else {
-						const auto data_ptr = FlatVector::GetData<int8_t>(col_vec);
-						memcpy(data_ptr + row_idx, record_ptr, sizeof(int8_t));
-					}
-					record_ptr += sizeof(int8_t);
-				}
-				case LogicalTypeId::UTINYINT: {
-					if(is_null) {
-						FlatVector::SetNull(col_vec, row_idx, true);
-					} else {
-						const auto data_ptr = FlatVector::GetData<uint8_t>(col_vec);
-						memcpy(data_ptr + row_idx, record_ptr, sizeof(uint8_t));
-					}
-					record_ptr += sizeof(uint8_t);
-				} break;
-				case LogicalTypeId::SMALLINT: {
-					if(is_null) {
-						FlatVector::SetNull(col_vec, row_idx, true);
-					} else {
-						const auto data_ptr = FlatVector::GetData<int16_t>(col_vec);
-						memcpy(data_ptr + row_idx, record_ptr, sizeof(int16_t));
-					}
-					record_ptr += sizeof(int16_t);
-				} break;
-				case LogicalTypeId::INTEGER: {
-					if(is_null) {
-						FlatVector::SetNull(col_vec, row_idx, true);
-					} else {
-						const auto data_ptr = FlatVector::GetData<int32_t>(col_vec);
-						memcpy(data_ptr + row_idx, record_ptr, sizeof(int32_t));
-					}
-					record_ptr += sizeof(int32_t);
-				} break;
-				case LogicalTypeId::BIGINT: {
-					if(is_null) {
-						FlatVector::SetNull(col_vec, row_idx, true);
-					} else {
-						const auto data_ptr_bigint = FlatVector::GetData<int64_t>(col_vec);
-						memcpy(data_ptr_bigint + row_idx, record_ptr, sizeof(int64_t));
-					}
-					record_ptr += sizeof(int64_t);
-				} break;
-				case LogicalTypeId::VARCHAR: {
-					// TODO: we cant just memcpy, theres shift-out characters to deal with
-					const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-					if(td_type.GetId() == TeradataTypeId::CHAR) {
-						const auto len = td_type.GetLength();
-						if(is_null) {
-							FlatVector::SetNull(col_vec, row_idx, true);
-						} else {
-							// Now do some shit
-							*data_ptr = StringVector::AddString(col_vec, record_ptr, len);
-						}
-						record_ptr += len;
-					} else {
-						uint16_t len = 0;
-						memcpy(&len, record_ptr, sizeof(uint16_t));
-						record_ptr += sizeof(uint16_t);
-
-						if(is_null) {
-							FlatVector::SetNull(col_vec, row_idx, true);
-						} else {
-							*data_ptr = StringVector::AddString(col_vec, record_ptr, len);
-							record_ptr += len;
-						}
-					}
-
-					col_vec.Verify(1);
-				} break;
+				case LogicalTypeId::TINYINT: ReadField<int8_t>(data_reader, col_vec, row_idx, is_null); break;
+				case LogicalTypeId::UTINYINT: ReadField<uint8_t>(data_reader, col_vec, row_idx, is_null); break;
+				case LogicalTypeId::SMALLINT: ReadField<int16_t>(data_reader, col_vec, row_idx, is_null); break;
+				case LogicalTypeId::INTEGER: ReadField<int32_t>(data_reader, col_vec, row_idx, is_null); break;
+				case LogicalTypeId::BIGINT: ReadField<int64_t>(data_reader, col_vec, row_idx, is_null); break;
+				case LogicalTypeId::VARCHAR: ReadVarcharField(data_reader, col_vec, row_idx, is_null, td_types[col_idx]); break;
 				default:
 					throw NotImplementedException("Unsupported Teradata Type: '%s'", col_vec.GetType().ToString());
 				}

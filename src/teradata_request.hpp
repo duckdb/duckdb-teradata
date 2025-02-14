@@ -40,7 +40,10 @@ public:
 class TeradataSqlRequest final : public TeradataRequest {
 public:
 	explicit TeradataSqlRequest(Int32 session_id_p, const string &sql);
-	void FetchNextChunk(DataChunk &chunk, const vector<TeradataType> &td_types);
+	void FetchNextChunk(DataChunk &chunk);
+	const vector<TeradataType> &GetTypes() const { return td_types; }
+private:
+	vector<TeradataType> td_types;
 };
 
 } // namespace duckdb
