@@ -8,7 +8,7 @@ class Catalog;
 
 class TeradataTableSet final : public TeradataInSchemaSet {
 public:
-	explicit TeradataTableSet(Catalog &catalog) : TeradataInSchemaSet(catalog) {
+	explicit TeradataTableSet(TeradataSchemaEntry &schema) : TeradataInSchemaSet(schema) {
 	}
 protected:
 	void LoadEntries(ClientContext &context) override;

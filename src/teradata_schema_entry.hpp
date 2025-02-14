@@ -2,10 +2,12 @@
 
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 
-#include <teradata_table_set.hpp>
+#include "teradata_table_set.hpp"
 
 namespace duckdb {
 
+// Teradata doesnt have the equivalent of a "Schema" in the traditional sense, therefore we
+// treat "Databases" as schemas.
 class TeradataSchemaEntry final : public SchemaCatalogEntry {
 public:
   TeradataSchemaEntry(Catalog &catalog, CreateSchemaInfo &info);

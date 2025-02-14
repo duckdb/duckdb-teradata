@@ -2,6 +2,8 @@
 #include "teradata_type.hpp"
 #include "util/binary_reader.hpp"
 
+#include <teradata_connection.hpp>
+
 namespace duckdb {
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -43,7 +45,7 @@ void TeradataRequest::FetchAndExpectParcel(PclFlavor expected) {
 	Int32 result = EM_OK;
 	DBCHCL(&result, cnta, &dbc);
 
-	if(result == EM_BUFOVERFLOW) {
+	while(result == BUFOVFLOW) {
 		// Resize the buffer, and try again
 		buffer.resize(dbc.fet_ret_data_len);
 		dbc.fet_data_ptr = buffer.data();
@@ -449,6 +451,8 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, length);
 		}
 	} break;
+	case TeradataTypeId::DATE_T:
+	case TeradataTypeId::DATE_A:
 	case TeradataTypeId::CHAR: {
 		if(is_null) {
 			FlatVector::SetNull(col_vec, row_idx, true);
@@ -466,6 +470,32 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 	}
 }
 
+unique_ptr<ColumnDataCollection> TeradataSqlRequest::Execute(const TeradataConnection &conn, const string &sql) {
+	TeradataSqlRequest request(conn.GetSessionId(), sql);
+
+	vector<LogicalType> types;
+	for(auto &td_type : request.GetTypes()) {
+		types.push_back(td_type.GetDuckType());
+	}
+
+	auto result = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
+
+	ColumnDataAppendState append_state;
+	result->InitializeAppend(append_state);
+
+	DataChunk chunk;
+	chunk.Initialize(Allocator::DefaultAllocator(), types);
+
+	while(request.GetStatus() == TeradataRequestStatus::OPEN) {
+		request.FetchNextChunk(chunk);
+		result->Append(append_state, chunk);
+		chunk.Reset();
+	}
+
+	return result;
+}
+
+
 void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 	if (status != TeradataRequestStatus::OPEN) {
 		throw InternalException("Cannot fetch from a closed request");
@@ -480,13 +510,22 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 
 	Int32 result = EM_OK;
 
-
 	// This is how much capacity we have in the chunk
 	idx_t row_idx = 0;
 
 	while (row_idx < STANDARD_VECTOR_SIZE) {
 
 		DBCHCL(&result, cnta, &dbc);
+
+		// Keep resizing until we fit the data
+		while(result == BUFOVFLOW) {
+			// Resize the buffer, and try again
+			buffer.resize(dbc.fet_ret_data_len);
+			dbc.fet_data_ptr = buffer.data();
+			dbc.fet_max_data_len = buffer.size();
+			DBCHCL(&result, cnta, &dbc);
+		}
+
 		if (result != EM_OK) {
 			throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
 		}

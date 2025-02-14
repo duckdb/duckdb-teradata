@@ -1,9 +1,9 @@
 #include "teradata_catalog_set.hpp"
+#include "teradata_schema_entry.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
 
 namespace duckdb {
-
 TeradataCatalogSet::TeradataCatalogSet(Catalog &catalog) : catalog(catalog) {
 
 }
@@ -25,4 +25,8 @@ void TeradataCatalogSet::Scan(ClientContext &context, const std::function<void(C
 	}
 }
 
+TeradataInSchemaSet::TeradataInSchemaSet(TeradataSchemaEntry &schema)
+	: TeradataCatalogSet(schema.ParentCatalog()), schema(schema) {
 }
+
+} // namespace duckdb

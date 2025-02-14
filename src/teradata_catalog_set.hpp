@@ -10,6 +10,7 @@ namespace duckdb {
 class Catalog;
 class ClientContext;
 class CatalogEntry;
+class TeradataSchemaEntry;
 
 //----------------------------------------------------------------------------------------------------------------------
 // TeradataCatalogSet
@@ -44,8 +45,9 @@ private:
 // Base class for sets of entries within a schema
 class TeradataInSchemaSet : public TeradataCatalogSet {
 public:
-    explicit TeradataInSchemaSet(Catalog &catalog) : TeradataCatalogSet(catalog) {
-	}
+    explicit TeradataInSchemaSet(TeradataSchemaEntry &schema);
+protected:
+    TeradataSchemaEntry &schema;
 };
 
 } // namespace duckdb

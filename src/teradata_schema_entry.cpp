@@ -1,18 +1,25 @@
 #include "teradata_schema_entry.hpp"
 
+#include <teradata_table_entry.hpp>
+
 namespace duckdb {
 
 TeradataSchemaEntry::TeradataSchemaEntry(Catalog &catalog, CreateSchemaInfo &info)
-	: SchemaCatalogEntry(catalog, info), tables(catalog) {
-
+	: SchemaCatalogEntry(catalog, info), tables(*this) {
 }
 
 void TeradataSchemaEntry::Scan(CatalogType type, const std::function<void(CatalogEntry &)> &callback) {
-
+	throw NotImplementedException("Scan without context not supported");
 }
 
 void TeradataSchemaEntry::Scan(ClientContext &context, CatalogType type, const std::function<void(CatalogEntry &)> &callback) {
-
+	switch(type) {
+		case CatalogType::TABLE_ENTRY:
+			tables.Scan(context, [&](CatalogEntry &schema) { callback(schema.Cast<TeradataTableEntry>()); });
+		break;
+		default:
+			throw InternalException("Type not supported for TeradataSchemaEntry::Scan");
+	}
 }
 
 optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateIndex(CatalogTransaction transaction, CreateIndexInfo &info, TableCatalogEntry &table) {

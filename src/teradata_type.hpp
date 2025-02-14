@@ -87,6 +87,7 @@ private:
 inline LogicalType TeradataType::GetDuckType() const {
 	switch(id) {
 		case TeradataTypeId::BYTE:
+		case TeradataTypeId::BYTEINT:
 			return LogicalType::TINYINT;
 		case TeradataTypeId::SMALLINT:
 			return LogicalType::SMALLINT;
@@ -97,6 +98,8 @@ inline LogicalType TeradataType::GetDuckType() const {
 		case TeradataTypeId::BLOB:
 			return LogicalType::BLOB;
 	    case TeradataTypeId::VARCHAR:
+		case TeradataTypeId::DATE_T:
+		case TeradataTypeId::DATE_A:
 	    	return LogicalType::VARCHAR;
 		case TeradataTypeId::CHAR:
 	    	return LogicalType::VARCHAR; // This is the closes thing we got
@@ -115,9 +118,6 @@ inline LogicalType TeradataType::GetDuckType() const {
 		case TeradataTypeId::GRAPHIC:
 		case TeradataTypeId::LONGVARGRAPHIC:
 	    case TeradataTypeId::LONGVARBYTE:
-	    case TeradataTypeId::DATE_A:
-	    case TeradataTypeId::DATE_T:
-	    case TeradataTypeId::BYTEINT:
 	    case TeradataTypeId::PERIOD_DATE:
 	    case TeradataTypeId::PERIOD_TIME:
 		case TeradataTypeId::PERIOD_TIME_TZ:
