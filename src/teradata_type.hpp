@@ -44,6 +44,8 @@ enum class TeradataTypeId : uint8_t {
 	XML_BINARY,
 	XML_BINARY_DEFERRED,
 	XML_BINARY_LOCATOR,
+	TIMESTAMP,
+	DATE,
 };
 
 enum class TeradataTypeVariant : uint8_t {
@@ -59,6 +61,8 @@ public:
 	TeradataType(TeradataTypeId id, TeradataTypeVariant variant, int64_t precision, int64_t scale)
 	    : id(id), variant(variant), precision(precision), scale(scale) {
 	}
+
+	static TeradataTypeId FromShortCode(const char* code);
 
 	TeradataTypeId GetId() const { return id; }
 	TeradataTypeVariant GetVariant() const { return variant; }
@@ -82,6 +86,8 @@ private:
 	TeradataTypeVariant variant = TeradataTypeVariant::STANDARD;
 	int64_t precision = 0;
 	int64_t scale = 0;
+
+	static unordered_map<string, TeradataTypeId> short_codes;
 };
 
 inline LogicalType TeradataType::GetDuckType() const {
@@ -107,8 +113,13 @@ inline LogicalType TeradataType::GetDuckType() const {
 		case TeradataTypeId::BYTE:
 		case TeradataTypeId::VARBYTE:
 			return LogicalType::BLOB;
+		case TeradataTypeId::TIMESTAMP:
+			return LogicalType::TIMESTAMP;
+		case TeradataTypeId::DATE:
+            return LogicalType::DATE;
 		// TODO: Implement the rest
 		case TeradataTypeId::DECIMAL:
+			return LogicalType::DECIMAL(precision, scale);
 		case TeradataTypeId::BLOB_AS_DEFERRED:
 		case TeradataTypeId::BLOB_AS_LOCATOR:
 		case TeradataTypeId::CLOB:
@@ -130,8 +141,8 @@ inline LogicalType TeradataType::GetDuckType() const {
 	    case TeradataTypeId::XML_BINARY:
 	    case TeradataTypeId::XML_BINARY_DEFERRED:
 	    case TeradataTypeId::XML_BINARY_LOCATOR:
-			throw NotImplementedException("Unsupported Teradata Type: '%s'", ToString());
 		case TeradataTypeId::INVALID:
+			throw NotImplementedException("Unsupported Teradata Type: '%s'", ToString());
 		default:
 			D_ASSERT(false);
 			throw InvalidInputException("Invalid Teradata Type");
@@ -175,11 +186,22 @@ inline string TeradataType::ToString() const {
 	case TeradataTypeId::XML_BINARY: return "XML_BINARY";
 	case TeradataTypeId::XML_BINARY_DEFERRED: return "XML_BINARY_DEFERRED";
 	case TeradataTypeId::XML_BINARY_LOCATOR: return "XML_BINARY_LOCATOR";
+	case TeradataTypeId::TIMESTAMP: return "TIMESTAMP";
+	case TeradataTypeId::DATE: return "DATE";
 	default:
 		D_ASSERT(false);
 		return "UNKNOWN";
 	}
 }
+
+inline TeradataTypeId TeradataType::FromShortCode(const char *code) {
+	auto entry = short_codes.find(code);
+    if (entry == short_codes.end()) {
+        return TeradataTypeId::INVALID;
+    }
+    return entry->second;
+}
+
 
 
 } // namespace duckdb

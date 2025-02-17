@@ -62,7 +62,18 @@ void TeradataRequest::FetchAndExpectParcel(PclFlavor expected) {
 	if (result != EM_OK) {
 		throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
 	}
+
 	if (dbc.fet_parcel_flavor != expected) {
+		if(dbc.fet_parcel_flavor == PclFAILURE) {
+			BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
+			const auto stmt_no = reader.Read<uint16_t>();
+			const auto info = reader.Read<uint16_t>();
+			const auto code = reader.Read<uint16_t>();
+			const auto msg_len = reader.Read<uint16_t>();
+			const auto msg = reader.ReadBytes(msg_len);
+
+			throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code, string(msg, msg_len));
+		}
 		throw IOException("Expected parcel flavor %d, got %d", expected, dbc.fet_parcel_flavor);
 	}
 }

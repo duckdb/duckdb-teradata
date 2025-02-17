@@ -18,7 +18,7 @@ void TeradataSchemaEntry::Scan(ClientContext &context, CatalogType type, const s
 			tables.Scan(context, [&](CatalogEntry &schema) { callback(schema.Cast<TeradataTableEntry>()); });
 		break;
 		default:
-			throw InternalException("Type not supported for TeradataSchemaEntry::Scan");
+			break; // throw InternalException("Type not supported for TeradataSchemaEntry::Scan");
 	}
 }
 

@@ -20,7 +20,8 @@ TableFunction TeradataTableEntry::GetScanFunction(ClientContext &context, unique
 
 TableStorageInfo TeradataTableEntry::GetStorageInfo(ClientContext &context) {
 	// TODO;
-	throw NotImplementedException("TeradataTableEntry::GetStorageInfo");
+	TableStorageInfo info;
+	return info;
 }
 
 } // namespace duckdb
