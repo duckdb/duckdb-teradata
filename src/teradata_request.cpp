@@ -53,6 +53,12 @@ void TeradataRequest::FetchAndExpectParcel(PclFlavor expected) {
 		DBCHCL(&result, cnta, &dbc);
 	}
 
+	while(result == EM_NODATA) {
+		// No data, try again
+		// TODO: Yield the DuckDB task here, dont just busy loop
+		DBCHCL(&result, cnta, &dbc);
+	}
+
 	if (result != EM_OK) {
 		throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
 	}
@@ -435,8 +441,35 @@ static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool
 	}
 }
 
+static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, TeradataType &td_type) {
+	switch (td_type.GetId()) {
+	case TeradataTypeId::VARBYTE: {
+		const auto length = reader.Read<uint16_t>();
+		if (is_null) {
+			FlatVector::SetNull(col_vec, row_idx, true);
+		} else {
+			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
+			const auto text_ptr = reader.ReadBytes(length);
+			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, length);
+		}
+	} break;
+	case TeradataTypeId::BYTE: {
+		const auto max_length = td_type.GetLength();
+		if (is_null) {
+			FlatVector::SetNull(col_vec, row_idx, true);
+			reader.Skip(max_length);
+		} else {
+			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
+			const auto text_ptr = reader.ReadBytes(max_length);
+			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, max_length);
+		}
+	} break;
+	default:
+		throw NotImplementedException("Unsupported Binary Type: '%s'", td_type.ToString());
+	}
+}
+
 static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, TeradataType &td_type) {
-	const auto max_length = td_type.GetLength();
 
 	// The logic differs slightly depending on what type of varchar we are dealing with
 	switch(td_type.GetId()) {
@@ -454,6 +487,7 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 	case TeradataTypeId::DATE_T:
 	case TeradataTypeId::DATE_A:
 	case TeradataTypeId::CHAR: {
+		const auto max_length = td_type.GetLength();
 		if(is_null) {
 			FlatVector::SetNull(col_vec, row_idx, true);
 			reader.Skip(max_length);
@@ -564,6 +598,7 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 				case LogicalTypeId::SMALLINT: ReadField<int16_t>(data_reader, col_vec, row_idx, is_null); break;
 				case LogicalTypeId::INTEGER: ReadField<int32_t>(data_reader, col_vec, row_idx, is_null); break;
 				case LogicalTypeId::BIGINT: ReadField<int64_t>(data_reader, col_vec, row_idx, is_null); break;
+				case LogicalTypeId::BLOB: ReadBlobField(data_reader, col_vec, row_idx, is_null, td_types[col_idx]); break;
 				case LogicalTypeId::VARCHAR: ReadVarcharField(data_reader, col_vec, row_idx, is_null, td_types[col_idx]); break;
 				default:
 					throw NotImplementedException("Unsupported Teradata Type: '%s'", col_vec.GetType().ToString());

@@ -4,6 +4,8 @@
 #include "teradata_catalog.hpp"
 #include "teradata_request.hpp"
 
+#include <duckdb/parser/parsed_data/create_table_info.hpp>
+
 namespace duckdb {
 
 void TeradataTableSet::LoadEntries(ClientContext &context) {
@@ -14,7 +16,9 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 
 	// TODO: Sanitize the schema name
 	const auto cdc = TeradataSqlRequest::Execute(conn,
-		StringUtil::Format("sel * from dbc.TablesV tv where DataBaseName = '%s' and TableKind = 'T';"));
+		StringUtil::Format("sel TableName, RequestText, CommentString from dbc.TablesV tv where DataBaseName = '%s' and TableKind = 'T';"));
+
+	CreateTableInfo info;
 
 	// Now iterate over the result and create the table entries
 

@@ -86,7 +86,6 @@ private:
 
 inline LogicalType TeradataType::GetDuckType() const {
 	switch(id) {
-		case TeradataTypeId::BYTE:
 		case TeradataTypeId::BYTEINT:
 			return LogicalType::TINYINT;
 		case TeradataTypeId::SMALLINT:
@@ -105,9 +104,11 @@ inline LogicalType TeradataType::GetDuckType() const {
 	    	return LogicalType::VARCHAR; // This is the closes thing we got
 	    case TeradataTypeId::FLOAT:
 		    return LogicalType::FLOAT;
+		case TeradataTypeId::BYTE:
+		case TeradataTypeId::VARBYTE:
+			return LogicalType::BLOB;
 		// TODO: Implement the rest
 		case TeradataTypeId::DECIMAL:
-		case TeradataTypeId::VARBYTE:
 		case TeradataTypeId::BLOB_AS_DEFERRED:
 		case TeradataTypeId::BLOB_AS_LOCATOR:
 		case TeradataTypeId::CLOB:
