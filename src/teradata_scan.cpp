@@ -295,8 +295,8 @@ void TeradataRequestConnection::Prepare(const string &query, vector<string> &nam
 		CliPrepColInfoType col_info = {};
 		memcpy(&col_info, beg_ptr, sizeof(CliPrepColInfoType));
 		beg_ptr += sizeof(CliPrepColInfoType);
-
-		auto ttype = TeradataColumnType::Get(col_info.DataType);
+		/*
+		//auto ttype = TeradataColumnType::Get(col_info.DataType);
 		if (ttype.type.id() == LogicalTypeId::INVALID) {
 			throw NotImplementedException("Unsupported Teradata Type: '%s'", ttype.name);
 		}
@@ -329,6 +329,7 @@ void TeradataRequestConnection::Prepare(const string &query, vector<string> &nam
 
 		// Skip that many bytes ahead
 		beg_ptr += col_title_len;
+		*/
 	}
 
 	FetchAndExpectParcel(PclENDSTATEMENT);
