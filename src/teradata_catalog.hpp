@@ -46,7 +46,8 @@ private:
 	string path;
 
 	// The set of schemas in this database
-	duckdb::TeradataSchemaSet schemas;
+	TeradataSchemaSet schemas;
+	string default_schema;
 };
 
 } // namespace duckdb

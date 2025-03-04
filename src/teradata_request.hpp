@@ -23,7 +23,8 @@ public:
 
 protected:
 	explicit TeradataRequest(Int32 session_id_p);
-	void FetchAndExpectParcel(PclFlavor expected);
+	PclFlavor FetchNextParcel();
+	void MatchNextParcel(PclFlavor flavor);
 
 protected:
 	DBCAREA dbc;

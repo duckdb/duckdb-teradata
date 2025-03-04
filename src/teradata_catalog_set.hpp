@@ -11,6 +11,7 @@ class Catalog;
 class ClientContext;
 class CatalogEntry;
 class TeradataSchemaEntry;
+struct DropInfo;
 
 //----------------------------------------------------------------------------------------------------------------------
 // TeradataCatalogSet
@@ -26,6 +27,14 @@ public:
     // Scan all entries in this set
     void Scan(ClientContext &context, const std::function<void(CatalogEntry &)> &callback);
 
+    // Create an entry in the set
+    virtual optional_ptr<CatalogEntry> CreateEntry(unique_ptr<CatalogEntry> entry);
+
+    // Drop an entry from the set
+    void DropEntry(ClientContext &context, DropInfo &info);
+
+    // Get entry by name
+    optional_ptr<CatalogEntry> GetEntry(ClientContext &context, const string &name);
 protected:
     // Needs to be implemented by subclasses: method to load the entries of this set
     virtual void LoadEntries(ClientContext &context) = 0;
@@ -36,6 +45,7 @@ protected:
 private:
     void TryLoadEntries(ClientContext &context);
     mutex load_lock;
+    mutex entry_lock;
     bool is_loaded = false;
 };
 
@@ -46,6 +56,8 @@ private:
 class TeradataInSchemaSet : public TeradataCatalogSet {
 public:
     explicit TeradataInSchemaSet(TeradataSchemaEntry &schema);
+
+    optional_ptr<CatalogEntry> CreateEntry(unique_ptr<CatalogEntry> entry) override;
 protected:
     TeradataSchemaEntry &schema;
 };
