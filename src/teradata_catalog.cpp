@@ -44,7 +44,15 @@ void TeradataCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
 optional_ptr<SchemaCatalogEntry> TeradataCatalog::GetSchema(CatalogTransaction transaction, const string &schema_name,
                                                             OnEntryNotFound if_not_found,
                                                             QueryErrorContext error_context) {
-	throw NotImplementedException("TeradataCatalog::GetSchema");
+	if(schema_name == DEFAULT_SCHEMA) {
+		return GetSchema(transaction, default_schema, if_not_found, error_context);
+	}
+
+	auto entry = schemas.GetEntry(transaction.GetContext(), schema_name);
+	if(!entry && if_not_found != OnEntryNotFound::RETURN_NULL) {
+		throw BinderException("Schema \"%s\" not found", schema_name);
+	}
+	return reinterpret_cast<SchemaCatalogEntry*>(entry.get());
 }
 
 void TeradataCatalog::DropSchema(ClientContext &context, DropInfo &info) {

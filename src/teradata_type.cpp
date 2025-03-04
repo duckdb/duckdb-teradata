@@ -2,51 +2,148 @@
 
 namespace duckdb {
 
-unordered_map<string, TeradataTypeId> TeradataType::short_codes = {
- { "++", TeradataTypeId::BLOB },		// TD_ANYTYPE
- { "A1", TeradataTypeId::BLOB },		// UDT
- { "AT", TeradataTypeId::BLOB },		// TIME
+string TeradataType::ToString() const {
+	switch(id) {
+	case TeradataTypeId::INVALID: return "INVALID";
+	case TeradataTypeId::ARRAY: return "ARRAY";
+	case TeradataTypeId::BYTE: return "BYTE";
+	case TeradataTypeId::VARBYTE: return "VARBYTE";
+	case TeradataTypeId::BLOB: return "BLOB";
+	case TeradataTypeId::CHAR: return "CHAR";
+	case TeradataTypeId::VARCHAR: return "VARCHAR";
+	case TeradataTypeId::CLOB: return "CLOB";
+	case TeradataTypeId::DATE: return "DATE";
+	case TeradataTypeId::TIME: return "TIME";
+	case TeradataTypeId::TIMESTAMP: return "TIMESTAMP";
+	case TeradataTypeId::TIME_TZ: return "TIME_TZ";
+	case TeradataTypeId::TIMESTAMP_TZ: return "TIMESTAMP_TZ";
+	case TeradataTypeId::ST_GEOMETRY: return "ST_GEOMETRY";
+	case TeradataTypeId::MBR: return "MBR";
+	case TeradataTypeId::INTERVAL_YEAR: return "INTERVAL_YEAR";
+	case TeradataTypeId::INTERVAL_YEAR_TO_MONTH: return "INTERVAL_YEAR_TO_MONTH";
+	case TeradataTypeId::INTERVAL_MONTH: return "INTERVAL_MONTH";
+	case TeradataTypeId::INTERVAL_DAY: return "INTERVAL_DAY";
+	case TeradataTypeId::INTERVAL_DAY_TO_HOUR: return "INTERVAL_DAY_TO_HOUR";
+	case TeradataTypeId::INTERVAL_DAY_TO_MINUTE: return "INTERVAL_DAY_TO_MINUTE";
+	case TeradataTypeId::INTERVAL_DAY_TO_SECOND: return "INTERVAL_DAY_TO_SECOND";
+	case TeradataTypeId::INTERVAL_HOUR_TO_MINUTE: return "INTERVAL_HOUR_TO_MINUTE";
+	case TeradataTypeId::INTERVAL_HOUR_TO_SECOND: return "INTERVAL_HOUR_TO_SECOND";
+	case TeradataTypeId::INTERVAL_MINUTE: return "INTERVAL_MINUTE";
+	case TeradataTypeId::INTERVAL_MINUTE_TO_SECOND: return "INTERVAL_MINUTE_TO_SECOND";
+	case TeradataTypeId::INTERVAL_SECOND: return "INTERVAL_SECOND";
+	case TeradataTypeId::JSON: return "JSON";
+	case TeradataTypeId::BYTEINT: return "BYTEINT";
+	case TeradataTypeId::SMALLINT: return "SMALLINT";
+	case TeradataTypeId::INTEGER: return "INTEGER";
+	case TeradataTypeId::BIGINT: return "BIGINT";
+	case TeradataTypeId::DECIMAL: return "DECIMAL";
+	case TeradataTypeId::FLOAT: return "FLOAT";
+	case TeradataTypeId::NUMBER: return "NUMBER";
+	case TeradataTypeId::ANYTYPE: return "ANYTYPE";
+	case TeradataTypeId::VARIANT: return "VARIANT";
+	case TeradataTypeId::PERIOD_DATE: return "PERIOD_DATE";
+	case TeradataTypeId::PERIOD_TIME: return "PERIOD_TIME";
+	case TeradataTypeId::PERIOD_TIME_TZ: return "PERIOD_TIME_TZ";
+	case TeradataTypeId::PERIOD_TIMESTAMP: return "PERIOD_TIMESTAMP";
+	case TeradataTypeId::PERIOD_TIMESTAMP_TZ: return "PERIOD_TIMESTAMP_TZ";
+	case TeradataTypeId::UDT_DISTINCT: return "UDT_DISTINCT";
+	case TeradataTypeId::UDT_STRUCTURED: return "UDT_STRUCTURED";
+	case TeradataTypeId::XML: return "XML";
+	case TeradataTypeId::DATE_A: return "DATE (ANSI)";
+	case TeradataTypeId::DATE_T: return "DATE (TERADATA)";
+	default:
+		throw NotImplementedException("Unimplemented Teradata type");
+	}
+}
+
+LogicalType TeradataType::ToDuckDB() const {
+	switch (id) {
+	case TeradataTypeId::INVALID:
+		return LogicalType::INVALID;
+	case TeradataTypeId::BYTE:
+	case TeradataTypeId::VARBYTE:
+	case TeradataTypeId::BLOB:
+		return LogicalType::BLOB;
+	case TeradataTypeId::CHAR:
+	case TeradataTypeId::VARCHAR:
+	case TeradataTypeId::CLOB:
+		return LogicalType::VARCHAR;
+	case TeradataTypeId::DATE:
+		return LogicalType::DATE;
+	case TeradataTypeId::TIME:
+		return LogicalType::TIME;
+	case TeradataTypeId::TIMESTAMP:
+		return LogicalType::TIMESTAMP;
+	case TeradataTypeId::TIME_TZ:
+		return LogicalType::TIME_TZ;
+	case TeradataTypeId::TIMESTAMP_TZ:
+		return LogicalType::TIMESTAMP_TZ;
+	case TeradataTypeId::BYTEINT:
+		return LogicalType::TINYINT;
+	case TeradataTypeId::SMALLINT:
+		return LogicalType::SMALLINT;
+	case TeradataTypeId::INTEGER:
+		return LogicalType::INTEGER;
+	case TeradataTypeId::BIGINT:
+		return LogicalType::BIGINT;
+	case TeradataTypeId::DECIMAL:
+		// TODO: Not correct.
+		return LogicalType::DECIMAL(width, scale);
+	case TeradataTypeId::FLOAT:
+		return LogicalType::DOUBLE;
+	case TeradataTypeId::DATE_T:
+	case TeradataTypeId::DATE_A:
+		return LogicalType::DATE;
+	default:
+		throw NotImplementedException("Unimplemented Teradata type");
+	}
+}
+
+unordered_map<string, TeradataTypeId> TeradataType::code_map = {
+ { "++", TeradataTypeId::ANYTYPE },		// TD_ANYTYPE
+ { "A1", TeradataTypeId::INVALID },		// UDT
+ { "AT", TeradataTypeId::TIME },
  { "BF", TeradataTypeId::BYTE },
- { "BO", TeradataTypeId::BLOB },		// BINARY LARGE OBJECT
+ { "BO", TeradataTypeId::BLOB },
  { "BV", TeradataTypeId::VARBYTE },
  { "CF", TeradataTypeId::CHAR },
  { "CO", TeradataTypeId::CLOB },
  { "CV", TeradataTypeId::VARCHAR },
  { "D ", TeradataTypeId::DECIMAL},
  { "DA", TeradataTypeId::DATE},	// DATE
- { "DH", TeradataTypeId::INVALID},	// "INTERVAL DAY TO HOUR"
- { "DM", TeradataTypeId::INVALID},	// "INTERVAL DAY TO MINUTE"
- { "DS", TeradataTypeId::INVALID},	// "INTERVAL DAY TO SECOND"
- { "DY", TeradataTypeId::INVALID},	// "INTERVAL DAY"
+ { "DH", TeradataTypeId::INTERVAL_DAY_TO_HOUR},
+ { "DM", TeradataTypeId::INTERVAL_DAY_TO_MINUTE},
+ { "DS", TeradataTypeId::INTERVAL_DAY_TO_SECOND},
+ { "DY", TeradataTypeId::INTERVAL_DAY},
  { "F ", TeradataTypeId::FLOAT},
- { "HM", TeradataTypeId::INVALID},	// "INTERVAL HOUR TO MINUTE"
- { "HR", TeradataTypeId::INVALID},	// "INTERVAL HOUR"
- { "HS", TeradataTypeId::INVALID},	// "INTERVAL HOUR TO SECOND"
+ { "HM", TeradataTypeId::INTERVAL_HOUR_TO_MINUTE},
+ { "HR", TeradataTypeId::INTERVAL_HOUR},
+ { "HS", TeradataTypeId::INTERVAL_HOUR_TO_SECOND},
  { "I1", TeradataTypeId::BYTEINT},
  { "I2", TeradataTypeId::SMALLINT},
  { "I8", TeradataTypeId::BIGINT},
  { "I ", TeradataTypeId::INTEGER},
- { "MI", TeradataTypeId::INVALID},	// "INTERVAL MINUTE"
- { "MO", TeradataTypeId::INVALID},	// "INTERVAL MONTH"
- { "MS", TeradataTypeId::INVALID},	// "INTERVAL MINUTE TO SECOND"
- { "N ", TeradataTypeId::INVALID},		// NUMBER
- { "PD", TeradataTypeId::INVALID },	// "PERIOD(DATE)"
- { "PM", TeradataTypeId::INVALID },	// "PERIOD(TIMESTAMP WITH TIME ZONE)",
- { "PS", TeradataTypeId::INVALID},	// "PERIOD(TIMESTAMP)"},
- { "PT", TeradataTypeId::INVALID},	// "PERIOD(TIME)"},
- { "PZ", TeradataTypeId::INVALID},	// "PERIOD(TIME WITH TIME ZONE)"},
- { "SC", TeradataTypeId::INVALID},	// "INTERVAL SECOND"},
- { "SZ", TeradataTypeId::INVALID},	// "TIMESTAMP WITH TIME ZONE"},
- { "TS", TeradataTypeId::TIMESTAMP},	// "TIMESTAMP"},
- { "TZ", TeradataTypeId::INVALID},	// "TIME WITH TIME ZONE"},
- { "UT", TeradataTypeId::INVALID},	// "UDT"},
- { "YM", TeradataTypeId::INVALID},	// "INTERVAL YEAR TO MONTH"},
- { "YR", TeradataTypeId::INVALID},	// "INTERVAL YEAR"},
- { "AN", TeradataTypeId::INVALID},	// "UDT"},
- { "XM", TeradataTypeId::INVALID},	// "XML"},
- { "JN", TeradataTypeId::INVALID},	// "JSON"},
- { "DT", TeradataTypeId::INVALID},	// "DATASET"},
- { "??", TeradataTypeId::INVALID },	// "STGEOMETRY"}
+ { "MI", TeradataTypeId::INTERVAL_MINUTE},
+ { "MO", TeradataTypeId::INTERVAL_MONTH},
+ { "MS", TeradataTypeId::INTERVAL_MINUTE_TO_SECOND},
+ { "N ", TeradataTypeId::NUMBER},
+ { "PD", TeradataTypeId::PERIOD_DATE },
+ { "PM", TeradataTypeId::PERIOD_TIMESTAMP_TZ },
+ { "PS", TeradataTypeId::PERIOD_TIMESTAMP},
+ { "PT", TeradataTypeId::PERIOD_TIME},
+ { "PZ", TeradataTypeId::PERIOD_TIME_TZ},
+ { "SC", TeradataTypeId::INTERVAL_SECOND},
+ { "SZ", TeradataTypeId::TIMESTAMP_TZ},
+ { "TS", TeradataTypeId::TIMESTAMP},
+ { "TZ", TeradataTypeId::TIME_TZ},
+ { "UT", TeradataTypeId::INVALID},    // "UDT"
+ { "YM", TeradataTypeId::INTERVAL_YEAR_TO_MONTH},
+ { "YR", TeradataTypeId::INTERVAL_YEAR},
+ { "AN", TeradataTypeId::INVALID},	// "UDT",
+ { "XM", TeradataTypeId::XML},
+ { "JN", TeradataTypeId::JSON},
+ { "DT", TeradataTypeId::INVALID},	// "DATASET",
+ { "??", TeradataTypeId::ST_GEOMETRY },
 };
 
 

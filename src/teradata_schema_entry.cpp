@@ -1,6 +1,9 @@
 #include "teradata_schema_entry.hpp"
+#include "teradata_table_entry.hpp"
 
-#include <teradata_table_entry.hpp>
+#include "duckdb/parser/parsed_data/drop_info.hpp"
+
+#include <duckdb/planner/parsed_data/bound_create_table_info.hpp>
 
 namespace duckdb {
 
@@ -31,7 +34,12 @@ optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateFunction(CatalogTransactio
 }
 
 optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateTable(CatalogTransaction transaction, BoundCreateTableInfo &info) {
-	throw NotImplementedException("TeradataSchemaEntry::CreateTable");
+	auto &base_info = info.Base();
+	auto table_name = base_info.table;
+	if(base_info.on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
+		throw NotImplementedException("TeradataSchemaEntry::CreateTable REPLACE ON CONFLICT");
+	}
+	return tables.CreateTable(transaction.GetContext(), info);
 }
 
 optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateView(CatalogTransaction transaction, CreateViewInfo &info) {
@@ -63,11 +71,23 @@ optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateType(CatalogTransaction tr
 }
 
 optional_ptr<CatalogEntry> TeradataSchemaEntry::GetEntry(CatalogTransaction transaction, CatalogType type, const string &name) {
-	throw NotImplementedException("TeradataSchemaEntry::GetEntry");
+	switch(type) {
+		case CatalogType::TABLE_ENTRY:
+			return tables.GetEntry(transaction.GetContext(), name);
+		default:
+			return nullptr;
+	}
 }
 
 void TeradataSchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
-	throw NotImplementedException("TeradataSchemaEntry::DropEntry");
+	info.schema = name;
+	switch(info.type) {
+		case CatalogType::TABLE_ENTRY:
+			tables.DropEntry(context, info);
+			break;
+		default:
+			throw NotImplementedException("TeradataSchemaEntry::DropEntry");
+	}
 }
 
 void TeradataSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) {

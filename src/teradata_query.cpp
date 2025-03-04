@@ -14,13 +14,6 @@ namespace duckdb {
 //----------------------------------------------------------------------------------------------------------------------
 // Bind
 //----------------------------------------------------------------------------------------------------------------------
-struct TeradataQueryData final : TableFunctionData {
-	vector<LogicalType> types;
-	vector<string> names;
-	vector<TeradataType> td_types;
-	string sql;
-	TeradataCatalog *catalog;
-};
 
 static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableFunctionBindInput &input,
                                                   vector<LogicalType> &return_types, vector<string> &names) {
@@ -65,16 +58,20 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 
 		// Convert to duckdb types
 		for(auto &td_type : td_types) {
-			return_types.push_back(td_type.GetDuckType());
+			return_types.push_back(td_type.ToDuckDB());
 		}
 	}
 
-	auto result = make_uniq<TeradataQueryData>();
+	if(td_types.empty()) {
+		throw BinderException("No fields returned by query \"%s\" - the query must be a SELECT statement that returns at least one column", sql);
+	}
+
+	auto result = make_uniq<TeradataBindData>();
 	result->types = return_types;
 	result->td_types = std::move(td_types);
 	result->names = names;
 	result->sql = sql;
-	result->catalog = &td_catalog;
+	result->SetCatalog(td_catalog);
 
 	return std::move(result);
 }
@@ -90,16 +87,28 @@ struct TeradataQueryState final : GlobalTableFunctionState {
 };
 
 static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &context, TableFunctionInitInput &input) {
-	auto &data = input.bind_data->Cast<TeradataQueryData>();
+	auto &data = input.bind_data->Cast<TeradataBindData>();
+	string sql = data.sql;
+
+	// If we dont have a SQL string, just copy from the table
+	if(sql.empty()) {
+		if(data.table_name.empty()) {
+			throw InvalidInputException("Teradata query requires a valid SQL string");
+		}
+
+		// If we get here, we have a table name, so we need to construct a SQL string
+		sql = StringUtil::Format("SELECT * FROM %s.%s", data.schema_name, data.table_name);
+	}
 
 	// Create a new Teradata request, passing the session ID and SQL
-	auto result = make_uniq<TeradataQueryState>(data.catalog->GetConnection().GetSessionId(), data.sql);
+	auto session_id = data.GetCatalog()->GetConnection().GetSessionId();
+	auto result = make_uniq<TeradataQueryState>(session_id, sql);
 
 	// Check that the types are still the same, in case we need to rebind
 	auto &req_types = result->request.GetTypes();
 	for(idx_t i = 0; i < req_types.size(); i++) {
 		// TODO: Only look at TD id, but also check e.g. decimal precision
-		if(data.types[i] != req_types[i].GetDuckType()) {
+		if(data.types[i] != req_types[i].ToDuckDB()) {
 			throw InvalidInputException("Teradata query schema has changed since bind, please re-execute or re-prepare the query");
 		}
 	}
@@ -123,7 +132,7 @@ static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, 
 //----------------------------------------------------------------------------------------------------------------------
 // Register
 //----------------------------------------------------------------------------------------------------------------------
-void TeradataQueryFunction::Register(DatabaseInstance &db) {
+TableFunction TeradataQueryFunction::GetFunction() {
 	TableFunction function;
 	function.name = "teradata_query";
 	function.arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR};
@@ -131,7 +140,12 @@ void TeradataQueryFunction::Register(DatabaseInstance &db) {
 	function.bind = TeradataQueryBind;
 	function.init_global = TeradataQueryInit;
 	function.function = TeradataQueryExec;
+	return function;
+}
 
+
+void TeradataQueryFunction::Register(DatabaseInstance &db) {
+	const auto function = TeradataQueryFunction::GetFunction();
 	ExtensionUtil::RegisterFunction(db, function);
 }
 
