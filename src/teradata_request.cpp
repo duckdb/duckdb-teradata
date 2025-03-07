@@ -7,88 +7,96 @@
 
 namespace duckdb {
 
-//----------------------------------------------------------------------------------------------------------------------
-// Teradata Request Base
-//----------------------------------------------------------------------------------------------------------------------
-TeradataRequest::TeradataRequest(Int32 session_id_p) : session_id(session_id_p), status(TeradataRequestStatus::READY) {
+TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con) {
+	Init(con);
+}
 
-	// Set total length	of DBCAREA
+void TeradataRequestContext::Init(const TeradataConnection &con) {
+	// Initialize
 	dbc.total_len = sizeof(DBCAREA);
 
-	Int32 result;
+	int32_t result = EM_OK;
 	DBCHINI(&result, cnta, &dbc);
-	if (result != 0) {
+	if(result != EM_OK) {
 		throw IOException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
 	}
-
-	// Setup session id
-	dbc.i_sess_id = session_id;
-
-	// Setup buffer (1024 bytes) for fetching data
+	dbc.i_sess_id = con.GetSessionId();
 	buffer.resize(1024);
 }
 
-void TeradataRequest::Close() {
-	if (status == TeradataRequestStatus::READY || status == TeradataRequestStatus::CLOSED) {
-		// We can only close an empty request
-		return;
-	}
-	Int32 result = EM_OK;
-	dbc.func = DBFERQ;
-	DBCHCL(&result, cnta, &dbc);
-	if (result != EM_OK) {
-		throw IOException("Failed to close Teradata request");
-	}
-	status = TeradataRequestStatus::CLOSED;
+void TeradataRequestContext::Execute(const string &sql) {
+	BeginRequest(sql, 'E');
+
+	MatchParcel(PclENDSTATEMENT);
+
+	EndRequest();
 }
 
-PclFlavor TeradataRequest::FetchNextParcel() {
-	Int32 result = EM_OK;
-	DBCHCL(&result, cnta, &dbc);
+void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 
-	while(result == BUFOVFLOW) {
-		// Resize the buffer, and try again
-		buffer.resize(dbc.fet_ret_data_len);
-		dbc.fet_data_ptr = buffer.data();
-		dbc.fet_max_data_len = buffer.size();
-		DBCHCL(&result, cnta, &dbc);
+	const auto row_count = chunk.size();
+	const auto col_count = chunk.ColumnCount();
+
+	// Setup unified vector formats for each column
+	vector<UnifiedVectorFormat> formats;
+	formats.resize(chunk.ColumnCount());
+	for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		auto &col_vec = chunk.data[col_idx];
+		auto &format = formats[col_idx];
+		col_vec.ToUnifiedFormat(row_count, format);
 	}
 
-	while(result == EM_NODATA) {
-		// No data, try again
-		// TODO: Yield the DuckDB task here, dont just busy loop
-		DBCHCL(&result, cnta, &dbc);
+	// Encode the rows
+	vector<char> buffer;
+	vector<int32_t> lengths;
+	vector<int32_t> offsets;
+
+	for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+		lengths.push_back(0);
+		offsets.push_back(buffer.size());
+		for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+			auto &format = formats[col_idx];
+
+			const auto row_idx = format.sel->get_index(out_idx);
+			if(!format.validity.RowIsValid(row_idx)) {
+				// TODO: Use presence bits to encode null columns
+				// TODO: write null or something...
+				continue;
+			}
+
+			// Encode into the buffer
+			auto data = format.data;
+			auto len = GetTypeIdSize(chunk.data[col_idx].GetType().InternalType());
+			auto ptr = data + len * row_idx;
+
+			buffer.insert(buffer.end(), ptr, ptr + len);
+			lengths.back() += len;
+		}
 	}
 
-	if (result != EM_OK) {
-		throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
+	vector<char*> buffer_ptrs;
+	for(auto offset : offsets) {
+		buffer_ptrs.push_back(buffer.data() + offset);
 	}
 
-	if(dbc.fet_parcel_flavor == PclFAILURE) {
-		BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
-		const auto stmt_no = reader.Read<uint16_t>();
-		const auto info = reader.Read<uint16_t>();
-		const auto code = reader.Read<uint16_t>();
-		const auto msg_len = reader.Read<uint16_t>();
-		const auto msg = reader.ReadBytes(msg_len);
+	dbc.using_data_ptr_array = reinterpret_cast<char*>(buffer_ptrs.data());
+	dbc.using_data_len_array = lengths.data();
+	dbc.using_data_count = chunk.size();
 
-		throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code, string(msg, msg_len));
+	BeginRequest(sql, 'E');
+
+	MatchParcel(PclENDSTATEMENT);
+
+	for(idx_t i = 1; i < chunk.size(); i++) {
+		MatchParcel(PclSUCCESS);
+		MatchParcel(PclENDSTATEMENT);
 	}
 
-	return dbc.fet_parcel_flavor;
+
+	EndRequest();
 }
 
-void TeradataRequest::MatchNextParcel(PclFlavor flavor) {
-	const auto result = FetchNextParcel();
-	if (result != flavor) {
-		throw IOException("Expected parcel flavor %d, got %d", flavor, result);
-	}
-}
 
-
-//----------------------------------------------------------------------------------------------------------------------
-// Teradata Prepare Request
-//----------------------------------------------------------------------------------------------------------------------
 enum class TeradataColumnTypeVariant {
 	STANDARD,
 	NULLABLE,
@@ -258,8 +266,7 @@ static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
 	}
 }
 
-// TODO: not sure if this is always correct, read up more on formats
-static bool TryParseTypeModsFromFormat(const char* ptr, PclInt16 len, int64_t &precision, int64_t &scale) {
+static bool TryParseTypeModsFromFormat(const char* ptr, int16_t len, int64_t &precision, int64_t &scale) {
 	const auto end = ptr + len;
 	if(ptr != end && *ptr == 'X') {
 		ptr++;
@@ -297,157 +304,76 @@ static bool TryParseTypeModsFromFormat(const char* ptr, PclInt16 len, int64_t &p
 	return false;
 }
 
-TeradataPrepareRequest::TeradataPrepareRequest(Int32 session_id_p, const string &sql) : TeradataRequest(session_id_p) {
-	dbc.func = DBFIRQ;      // initiate request
-	dbc.change_opts = 'Y';  // change options to indicate that we want to change the options (to indicator mode)
-	dbc.resp_mode = 'I';    // indicator record mode
-	dbc.req_proc_opt = 'P'; // prepare mode
+void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
+	BeginRequest(sql, 'S');
 
-	vector<char> sql_buf(sql.begin(), sql.end());
-	dbc.req_ptr = sql_buf.data();
-	dbc.req_len = sql_buf.size();
+	// Fetch and match the second parcel
+	MatchParcel(PclPREPINFO);
 
-	int32_t result = EM_OK;
-	DBCHCL(&result, cnta, &dbc);
-	if (result != EM_OK) {
-		throw IOException("Failed to execute SQL: %s", string(dbc.msg_text, dbc.msg_len));
-	}
+	// Parse the columns
+	BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
 
-	dbc.i_req_id = dbc.o_req_id;
-	status = TeradataRequestStatus::OPEN;
-}
+	const auto prep_info = reader.Read<CliPrepInfoType>();
+	for(int16_t col_idx = 0; col_idx < prep_info.ColumnCount; col_idx++) {
+		const auto col_info = reader.Read<CliPrepColInfoType>();
 
-void TeradataPrepareRequest::GetColumns(vector<string> &names, vector<TeradataType> &types) {
-	if (status != TeradataRequestStatus::OPEN) {
-		throw IOException("Cannot get columns from a closed request");
-	}
+		const auto name_len = reader.Read<int16_t>();
+		const auto name_str = reader.ReadBytes(name_len);
 
-	// Fetch once to check if the request was successful
-	dbc.func = DBFFET;
-	dbc.i_req_id = dbc.o_req_id;
-	dbc.fet_data_ptr = buffer.data();
-	dbc.fet_max_data_len = buffer.size();
+		names.emplace_back(name_str, name_len);
 
-	// Now call the fetch command
-	MatchNextParcel(PclSUCCESS);
+		const auto format_len = reader.Read<int16_t>();
+		const auto format_str = reader.ReadBytes(format_len);
 
-	// Now get the response
-	MatchNextParcel(PclPREPINFO);
+		// TODO: Do something with the title?
+		const auto title_len = reader.Read<int16_t>();
+		//const auto title_str = reader.ReadBytes(title_len);
+		reader.Skip(title_len);
 
-	// Parse the prepinfo
-	auto beg_ptr = buffer.data();
-	// auto end_ptr = buf + dbc.fet_ret_data_len;
-	CliPrepInfoType info = {};
-	memcpy(&info, beg_ptr, sizeof(CliPrepInfoType));
-	beg_ptr += sizeof(CliPrepInfoType);
-
-	// Loop for the columns (ignore summaries for now)
-	for (PclInt16 col_idx = 0; col_idx < info.ColumnCount; col_idx++) {
-
-		CliPrepColInfoType col_info = {};
-		memcpy(&col_info, beg_ptr, sizeof(CliPrepColInfoType));
-		beg_ptr += sizeof(CliPrepColInfoType);
-
+		// Get the type from the parcel
 		auto col_type = GetTeradataTypeFromParcel(col_info.DataType);
 		auto &td_type = col_type.type;
 
-		// Now also read the column_name length
-		PclInt16 col_name_len = 0;
-		memcpy(&col_name_len, beg_ptr, sizeof(PclInt16));
-		beg_ptr += sizeof(PclInt16);
-
-		// Copy the column name
-		names.emplace_back(beg_ptr, col_name_len);
-
-		// Skip that many bytes ahead
-		beg_ptr += col_name_len;
-
-		// Now read the column format length
-		PclInt16 col_format_len = 0;
-		memcpy(&col_format_len, beg_ptr, sizeof(PclInt16));
-		beg_ptr += sizeof(PclInt16);
-
-		// Try to get the type mods
+		// Try to get the type mods from the format
 		int64_t precision = 0;
 		int64_t scale = 0;
 
-		if(TryParseTypeModsFromFormat(beg_ptr, col_format_len, precision, scale)) {
+		if(TryParseTypeModsFromFormat(format_str, format_len, precision, scale)) {
 			td_type.SetPrecision(precision);
 			td_type.SetScale(scale);
 		}
 
-		// Skip that many bytes ahead
-		// TODO: Dont skip, we need this to be able to read the data (e.g. char width)
-		beg_ptr += col_format_len;
-
-		// Now read the column title length
-		PclInt16 col_title_len = 0;
-		memcpy(&col_title_len, beg_ptr, sizeof(PclInt16));
-		beg_ptr += sizeof(PclInt16);
-
-		// Skip that many bytes ahead
-		beg_ptr += col_title_len;
-
-		// Push the type
 		types.push_back(td_type);
 	}
 
-	MatchNextParcel(PclENDSTATEMENT);
+	// End statement
+	MatchParcel(PclENDSTATEMENT);
 
-	MatchNextParcel(PclENDREQUEST);
+	// End request
+	MatchParcel(PclENDREQUEST);
 
-	status = TeradataRequestStatus::DONE;
+	is_open = false;
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-// Teradata SQL	Request
-//----------------------------------------------------------------------------------------------------------------------
+void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &types) {
 
-TeradataSqlRequest::TeradataSqlRequest(Int32 session_id_p, const string &sql) : TeradataRequest(session_id_p) {
+	BeginRequest(sql, 'E');
 
-	dbc.func = DBFIRQ;      // initiate request
-	dbc.change_opts = 'Y';  // change options to indicate that we want to change the options (to indicator mode)
-	dbc.resp_mode = 'I';    // indicator record mode
-	dbc.req_proc_opt = 'E'; // execute mode
-	dbc.i_sess_id = session_id;
+	const auto parcel = FetchParcel();
 
-	// We can't pass const char* to the dbc.req_ptr, so we need to copy the string
-	vector<char> sql_buf(sql.begin(), sql.end());
-
-	dbc.req_ptr = sql_buf.data();
-	dbc.req_len = static_cast<Int32>(sql_buf.size());
-
-	int32_t result = EM_OK;
-	DBCHCL(&result, cnta, &dbc);
-	if (result != EM_OK) {
-		throw IOException("Failed to execute SQL: %s", string(dbc.msg_text, dbc.msg_len));
-	}
-
-	// Fetch once to check if the request was successful
-	dbc.func = DBFFET;
-	dbc.i_req_id = dbc.o_req_id;
-	dbc.fet_data_ptr = buffer.data();
-	dbc.fet_max_data_len = buffer.size();
-
-	MatchNextParcel(PclSUCCESS);
-
-	status = TeradataRequestStatus::OPEN;
-
-	auto parcel = FetchNextParcel();
 	if(parcel == PclENDSTATEMENT) {
-		// No columns, just end the statement
-		MatchNextParcel(PclENDREQUEST);
-		status = TeradataRequestStatus::DONE;
+		// No data
+		EndRequest();
 		return;
 	}
 
-	// Otherwise, this statement returns records. First we get the data info
+	// Otherwise, return records
 	if(parcel != PclDATAINFO) {
-		throw IOException("Expected DATAINFO parcel, got %d", parcel);
+		throw IOException("Expected PclDATAINFO, got %d", parcel);
 	}
-	// p.413 in the manual
 
-	// Now parse the data info and set the types
+	// Now parse the data info and set types
+	// TODO:
 	BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
 
 	// Read the number of columns
@@ -468,8 +394,55 @@ TeradataSqlRequest::TeradataSqlRequest(Int32 session_id_p, const string &sql) : 
 			td_type.SetLength(length);
 		}
 
-		td_types.push_back(td_type);
+		types.push_back(td_type);
 	}
+
+}
+
+void TeradataRequestContext::MatchParcel(uint16_t flavor) {
+	const auto result = FetchParcel();
+	if(result != flavor) {
+		throw IOException("Expected parcel flavor %d, got %d", flavor, result);
+	}
+}
+
+uint16_t TeradataRequestContext::FetchParcel() {
+	dbc.func = DBFFET;
+	dbc.fet_data_ptr = buffer.data();
+	dbc.fet_max_data_len = static_cast<int32_t>(buffer.size());
+
+	int32_t result = EM_OK;
+	DBCHCL(&result, cnta, &dbc);
+
+	while(result == BUFOVFLOW) {
+		buffer.resize(dbc.fet_ret_data_len);
+		dbc.fet_data_ptr = buffer.data();
+		dbc.fet_max_data_len = buffer.size();
+		DBCHCL(&result, cnta, &dbc);
+	}
+
+	while(result == EM_NODATA) {
+		// No data, try again
+		// TODO: Yield the DuckDB task here, dont just busy loop
+		DBCHCL(&result, cnta, &dbc);
+	}
+
+	if (result != EM_OK) {
+		throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
+	}
+
+	if(dbc.fet_parcel_flavor == PclFAILURE) {
+		BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
+		const auto stmt_no = reader.Read<uint16_t>();
+		const auto info = reader.Read<uint16_t>();
+		const auto code = reader.Read<uint16_t>();
+		const auto msg_len = reader.Read<uint16_t>();
+		const auto msg = reader.ReadBytes(msg_len);
+
+		throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code, string(msg, msg_len));
+	}
+
+	return dbc.fet_parcel_flavor;
 }
 
 
@@ -483,7 +456,7 @@ static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool
 	}
 }
 
-static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, TeradataType &td_type) {
+static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, const TeradataType &td_type) {
 	switch (td_type.GetId()) {
 	case TeradataTypeId::VARBYTE: {
 		const auto length = reader.Read<uint16_t>();
@@ -511,7 +484,7 @@ static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, 
 	}
 }
 
-static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, TeradataType &td_type) {
+static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, const TeradataType &td_type) {
 
 	// The logic differs slightly depending on what type of varchar we are dealing with
 	switch(td_type.GetId()) {
@@ -545,85 +518,25 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 	}
 }
 
-unique_ptr<ColumnDataCollection> TeradataSqlRequest::Execute(const TeradataConnection &conn, const string &sql) {
-	TeradataSqlRequest request(conn.GetSessionId(), sql);
-
-	if(request.GetTypes().empty()) {
-		// No fields returned by query
-		return nullptr;
+bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> &types) {
+	if(!is_open) {
+		throw IOException("Teradata request is not open");
 	}
 
-	vector<LogicalType> types;
-	for(auto &td_type : request.GetTypes()) {
-		types.push_back(td_type.ToDuckDB());
-	}
-
-	auto result = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator(), types);
-
-	ColumnDataAppendState append_state;
-	result->InitializeAppend(append_state);
-
-	DataChunk chunk;
-	chunk.Initialize(Allocator::DefaultAllocator(), types);
-
-	while(request.GetStatus() == TeradataRequestStatus::OPEN) {
-		request.FetchNextChunk(chunk);
-		result->Append(append_state, chunk);
-		chunk.Reset();
-	}
-
-	return result;
-}
-
-
-void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
-	if (status != TeradataRequestStatus::OPEN) {
-		throw InternalException("Cannot fetch from a closed request");
-	}
-
-	// Assert that we have the correct number of columns
-	D_ASSERT(chunk.ColumnCount() == td_types.size());
-
-	dbc.func = DBFFET;
-	dbc.fet_data_ptr = buffer.data();
-	dbc.fet_max_data_len = buffer.size();
-
-	Int32 result = EM_OK;
-
-	// This is how much capacity we have in the chunk
 	idx_t row_idx = 0;
 
-	while (row_idx < STANDARD_VECTOR_SIZE) {
+	while(row_idx < chunk.GetCapacity()) {
+		const auto parcel = FetchParcel();
 
-		DBCHCL(&result, cnta, &dbc);
-
-		// Keep resizing until we fit the data
-		while(result == BUFOVFLOW) {
-			// Resize the buffer, and try again
-			buffer.resize(dbc.fet_ret_data_len);
-			dbc.fet_data_ptr = buffer.data();
-			dbc.fet_max_data_len = buffer.size();
-			DBCHCL(&result, cnta, &dbc);
-		}
-
-		if (result != EM_OK) {
-			throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
-		}
-
-		switch (dbc.fet_parcel_flavor) {
-		case PclENDREQUEST: {
-			// No more rows remaining
-			status = TeradataRequestStatus::DONE;
-			return;
-		}
+		switch (parcel) {
 		case PclRECORD: {
-			// p. 437 Record parcel (Indicator Mode)
+			// Offset null bytes
+			const auto null_bytes = (chunk.ColumnCount() + 7) / 8;
+			const auto data_ptr = buffer.data() + null_bytes;
+			const auto data_len = dbc.fet_ret_data_len;
 
-			// How many null indicators do we have?
-			const auto validity_bytes = (chunk.ColumnCount() + 7) / 8;
-
-			// Setup a reader for this row
-			BinaryReader reader(buffer.data() + validity_bytes, buffer.size());
+			// Parse the record
+			BinaryReader reader(data_ptr, data_len);
 
 			for (idx_t col_idx = 0; col_idx < chunk.ColumnCount(); col_idx++) {
 				// The NullIndicators Field contains one bit for each item in the DataField,
@@ -645,30 +558,122 @@ void TeradataSqlRequest::FetchNextChunk(DataChunk &chunk) {
 				case LogicalTypeId::INTEGER: ReadField<int32_t>(reader, col_vec, row_idx, is_null); break;
 				case LogicalTypeId::BIGINT: ReadField<int64_t>(reader, col_vec, row_idx, is_null); break;
 				case LogicalTypeId::DOUBLE: ReadField<double>(reader, col_vec, row_idx, is_null); break;
-				case LogicalTypeId::BLOB: ReadBlobField(reader, col_vec, row_idx, is_null, td_types[col_idx]); break;
-				case LogicalTypeId::VARCHAR: ReadVarcharField(reader, col_vec, row_idx, is_null, td_types[col_idx]); break;
+				case LogicalTypeId::BLOB: ReadBlobField(reader, col_vec, row_idx, is_null, types[col_idx]); break;
+				case LogicalTypeId::VARCHAR: ReadVarcharField(reader, col_vec, row_idx, is_null, types[col_idx]); break;
 				default:
 					throw NotImplementedException("Unsupported Teradata Type: '%s'", col_vec.GetType().ToString());
 				}
 			}
 
-			// Move to the next row
+			// Increment row id
 			row_idx++;
-			chunk.SetCardinality(row_idx);
-			break;
-		}
+
+		} break;
 		case PclENDSTATEMENT: {
-			// TODO: Handle multiple statement (throw?)
-			// printf("End statement");
-			break;
+			EndRequest();
+			chunk.SetCardinality(row_idx);
+			return false;
 		}
 		default: {
-			status = TeradataRequestStatus::DONE;
-			throw IOException("Unknown parcel flavor: %d", dbc.fet_parcel_flavor);
+			throw IOException("Unexpected parcel flavor %d", parcel);
 		}
 		}
 	}
+	chunk.SetCardinality(row_idx);
+	return true;
 }
 
+unique_ptr<ColumnDataCollection> TeradataRequestContext::FetchAll(const vector<TeradataType> &types) {
+	if(!is_open) {
+		throw IOException("Teradata request is not open");
+	}
+	if(types.empty()) {
+		throw IOException("Cannot fetch all data without types");
+	}
+
+	// Convert teradatat types to DuckDB types
+	vector<LogicalType> duck_types;
+	for(const auto &td_type : types) {
+		duck_types.push_back(td_type.ToDuckDB());
+	}
+
+	// Create a CDC to hold our result
+	auto result = make_uniq<ColumnDataCollection>(Allocator::DefaultAllocator(), duck_types);
+
+	// Initialize CDC append and payload chunk
+	ColumnDataAppendState append_state;
+	result->InitializeAppend(append_state);
+
+	DataChunk chunk;
+	chunk.Initialize(Allocator::DefaultAllocator(), duck_types);
+
+	// Fetch chunk by chunk and append to the CDC
+	auto has_more_chunks = true;
+
+	while(has_more_chunks) {
+		has_more_chunks = Fetch(chunk, types);
+		result->Append(append_state, chunk);
+		chunk.Reset();
+	}
+
+	return result;
+}
+
+void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
+	// Setup the request
+	dbc.func = DBFIRQ;      // initiate request
+	dbc.change_opts = 'Y';  // change options to indicate that we want to change the options (to indicator mode)
+	dbc.resp_mode = 'I';    // indicator record mode
+	dbc.req_proc_opt = mode;
+
+	// prepare mode (with params)	= 'S'
+	// prepare mode (no params)		= 'P'
+	// execute mode					= 'E'
+
+	// Pass the SQL
+	dbc.req_ptr = const_cast<char*>(sql.c_str());
+	dbc.req_len = static_cast<int32_t>(sql.size());
+
+	// Initialize request
+	int32_t result = EM_OK;
+	DBCHCL(&result, cnta, &dbc);
+	if (result != EM_OK) {
+		throw IOException("Failed to execute SQL: %s", string(dbc.msg_text, dbc.msg_len));
+	}
+
+	is_open = true;
+	dbc.i_req_id = dbc.o_req_id;
+
+	// Fetch and match the first parcel
+	MatchParcel(PclSUCCESS);
+}
+
+void TeradataRequestContext::EndRequest() {
+	// End request
+	MatchParcel(PclENDREQUEST);
+	is_open = false;
+}
+
+
+void TeradataRequestContext::Close() {
+	if(!is_open) {
+		return;
+	}
+
+	int32_t result = EM_OK;
+
+	dbc.func = DBFERQ;
+	DBCHCL(&result, cnta, &dbc);
+	if (result != EM_OK) {
+		throw IOException("Failed to close Teradata request");
+	}
+	is_open = false;
+}
+
+TeradataRequestContext::~TeradataRequestContext() {
+	if(is_open) {
+		Close();
+	}
+}
 
 } // namespace duckdb

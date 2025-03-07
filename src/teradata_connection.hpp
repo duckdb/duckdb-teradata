@@ -34,6 +34,14 @@ public:
 	void Reconnect();
 	void Disconnect();
 
+	void Execute(const string &sql);
+
+	// Execute a parameterized statement, once for each row in the chunk
+	void Execute(const string &sql, DataChunk &chunk);
+
+	// TODO: Return materializer or streaming result set, instead of always materialized CDC
+	unique_ptr<ColumnDataCollection> Query(const string &sql);
+
 private:
 	string logon_string;
 	Int32 session_id = 0;

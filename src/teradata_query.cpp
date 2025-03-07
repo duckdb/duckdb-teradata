@@ -48,15 +48,14 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 	}
 
 	const auto &con = transaction.GetConnection();
-	const auto sid = con.GetSessionId();
 
 	vector<TeradataType> td_types;
 	// Send a "prepare" request to Teradata to get the column names and types
 	{
-		TeradataPrepareRequest request(sid, sql);
-		request.GetColumns(names, td_types);
+		TeradataRequestContext td_ctx(con);
+		td_ctx.Prepare(sql, td_types, names);
 
-		// Convert to duckdb types
+		// Convert to DuckDB types
 		for(auto &td_type : td_types) {
 			return_types.push_back(td_type.ToDuckDB());
 		}
@@ -80,10 +79,10 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 // Init
 //----------------------------------------------------------------------------------------------------------------------
 struct TeradataQueryState final : GlobalTableFunctionState {
-	TeradataSqlRequest request;
-
-	TeradataQueryState(Int32 session_id, const string &sql) : request(session_id, sql) {
-	}
+	TeradataRequestContext td_ctx;
+	vector<TeradataType> td_types;
+	bool is_done = false;
+	explicit TeradataQueryState(TeradataConnection &con) : td_ctx(con) { }
 };
 
 static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &context, TableFunctionInitInput &input) {
@@ -101,14 +100,15 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 	}
 
 	// Create a new Teradata request, passing the session ID and SQL
-	auto session_id = data.GetCatalog()->GetConnection().GetSessionId();
-	auto result = make_uniq<TeradataQueryState>(session_id, sql);
+	auto &con = data.GetCatalog()->GetConnection();
+	auto result = make_uniq<TeradataQueryState>(con);
+
+	result->td_ctx.Query(sql, result->td_types);
 
 	// Check that the types are still the same, in case we need to rebind
-	auto &req_types = result->request.GetTypes();
-	for(idx_t i = 0; i < req_types.size(); i++) {
+	for(idx_t i = 0; i < result->td_types.size(); i++) {
 		// TODO: Only look at TD id, but also check e.g. decimal precision
-		if(data.types[i] != req_types[i].ToDuckDB()) {
+		if(data.types[i] != result->td_types[i].ToDuckDB()) {
 			throw InvalidInputException("Teradata query schema has changed since bind, please re-execute or re-prepare the query");
 		}
 	}
@@ -122,10 +122,14 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
 	auto &state = data.global_state->Cast<TeradataQueryState>();
 
-	if (state.request.GetStatus() == TeradataRequestStatus::OPEN) {
-		state.request.FetchNextChunk(output);
-	} else {
+	if(state.is_done) {
 		output.SetCardinality(0);
+		return;
+	}
+
+	// Fetch until we have a full chunk
+	if(!state.td_ctx.Fetch(output, state.td_types)) {
+		state.is_done = true;
 	}
 }
 

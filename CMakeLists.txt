@@ -22,6 +22,7 @@ set(EXTENSION_SOURCES
     src/teradata_transaction_manager.cpp
     src/teradata_transaction.cpp
     src/teradata_query.cpp
+    src/teradata_insert.cpp
     src/teradata_request.cpp
     src/teradata_schema_entry.cpp
     src/teradata_schema_set.cpp
@@ -55,6 +56,12 @@ find_library(
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
+
+# Suppress warnings from Teradata headers
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+  target_compile_options(${LOADABLE_EXTENSION_NAME} PRIVATE -Wno-deprecated-register)
+  target_compile_options(${EXTENSION_NAME} PRIVATE -Wno-deprecated-register)
+endif()
 
 target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include
                                                               ${TD_INCLUDE_DIR})

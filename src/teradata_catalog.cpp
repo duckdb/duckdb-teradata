@@ -63,11 +63,6 @@ void TeradataCatalog::DropSchema(ClientContext &context, DropInfo &info) {
 // Table Management
 //----------------------------------------------------------------------------------------------------------------------
 
-unique_ptr<PhysicalOperator> TeradataCatalog::PlanInsert(ClientContext &context, LogicalInsert &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
-	throw NotImplementedException("TeradataCatalog::PlanInsert");
-}
-
 unique_ptr<PhysicalOperator> TeradataCatalog::PlanCreateTableAs(ClientContext &context, LogicalCreateTable &op,
                                                                 unique_ptr<PhysicalOperator> plan) {
 

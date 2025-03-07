@@ -2,7 +2,6 @@
 #include "teradata_table_entry.hpp"
 #include "teradata_schema_entry.hpp"
 #include "teradata_catalog.hpp"
-#include "teradata_request.hpp"
 #include "teradata_transaction.hpp"
 
 #include "duckdb/parser/constraints/foreign_key_constraint.hpp"
@@ -137,7 +136,9 @@ optional_ptr<CatalogEntry> TeradataTableSet::CreateTable(ClientContext &context,
 
 	auto &base = info.Base();
 	const auto create_sql = GetTeradataCreateTableSQL(base);
-	TeradataSqlRequest::Execute(transaction.GetConnection(), create_sql);
+
+	// Execute the sql statement
+	transaction.GetConnection().Execute(create_sql);
 
 	auto tbl_entry = make_uniq<TeradataTableEntry>(catalog, schema, base);
 	return CreateEntry(std::move(tbl_entry));
@@ -148,7 +149,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	const auto &td_catalog = catalog.Cast<TeradataCatalog>();
 	auto &td_schema = schema.Cast<TeradataSchemaEntry>();
 
-	const auto &conn = td_catalog.GetConnection();
+	auto &conn = td_catalog.GetConnection();
 
 	/*
 		"The DBC.ColumnsV[X] views provide complete information for table columns but provide only limited information
@@ -166,7 +167,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 			"ORDER BY TableName, ColumnId"
 		, td_schema.name);
 
-	const auto cdc = TeradataSqlRequest::Execute(conn, query);
+	const auto cdc = conn.Query(query);
 
 	CreateTableInfo info;
 	info.schema = td_schema.name;

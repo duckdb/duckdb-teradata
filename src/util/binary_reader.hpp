@@ -38,6 +38,10 @@ public:
 		ptr += size;
 	}
 
+	void Reset() {
+		ptr = beg;
+	}
+
 private:
 	void CheckSize(size_t size) const {
 		if (ptr + size > end) {

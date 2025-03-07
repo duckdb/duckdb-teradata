@@ -1,11 +1,11 @@
 #include "teradata_catalog_set.hpp"
 #include "teradata_schema_entry.hpp"
+#include "teradata_transaction.hpp"
+#include "teradata_connection.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
+#include "duckdb/parser/parsed_data/drop_info.hpp"
 
-#include <teradata_request.hpp>
-#include <teradata_transaction.hpp>
-#include <duckdb/parser/parsed_data/drop_info.hpp>
 
 namespace duckdb {
 TeradataCatalogSet::TeradataCatalogSet(Catalog &catalog) : catalog(catalog) {
@@ -55,8 +55,10 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	}
 
 	// Execute the drop query
-	auto &transaction = TeradataTransaction::Get(context, catalog).Cast<TeradataTransaction>();
-	TeradataSqlRequest::Execute(transaction.GetConnection(), drop_query);
+	const auto &transaction = TeradataTransaction::Get(context, catalog).Cast<TeradataTransaction>();
+	auto &conn = transaction.GetConnection();
+
+	conn.Execute(drop_query);
 
 	// erase the entry from the catalog set
 	lock_guard<mutex> l(entry_lock);
