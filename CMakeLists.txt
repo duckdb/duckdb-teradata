@@ -29,8 +29,7 @@ set(EXTENSION_SOURCES
     src/teradata_catalog_set.cpp
     src/teradata_table_set.cpp
     src/teradata_table_entry.cpp
-    src/teradata_type.cpp
-)
+    src/teradata_type.cpp)
 
 # Teradata on macos
 if(APPLE)
@@ -58,8 +57,10 @@ build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 # Suppress warnings from Teradata headers
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-  target_compile_options(${LOADABLE_EXTENSION_NAME} PRIVATE -Wno-deprecated-register)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
+                                             "AppleClang")
+  target_compile_options(${LOADABLE_EXTENSION_NAME}
+                         PRIVATE -Wno-deprecated-register)
   target_compile_options(${EXTENSION_NAME} PRIVATE -Wno-deprecated-register)
 endif()
 

@@ -6,11 +6,10 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
-
 namespace duckdb {
 
 TeradataTableEntry::TeradataTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info)
-	: TableCatalogEntry(catalog, schema, info) {
+    : TableCatalogEntry(catalog, schema, info) {
 }
 
 unique_ptr<BaseStatistics> TeradataTableEntry::GetStatistics(ClientContext &context, column_t column_id) {
@@ -28,7 +27,7 @@ TableFunction TeradataTableEntry::GetScanFunction(ClientContext &context, unique
 	result->table_name = name;
 	result->SetCatalog(td_catalog);
 
-	for(idx_t col_idx = 0; col_idx < columns.LogicalColumnCount(); col_idx++) {
+	for (idx_t col_idx = 0; col_idx < columns.LogicalColumnCount(); col_idx++) {
 		auto &col = columns.GetColumnMutable(LogicalIndex(col_idx));
 		result->names.push_back(col.GetName());
 		result->types.push_back(col.GetType());

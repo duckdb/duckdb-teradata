@@ -13,10 +13,13 @@
 namespace duckdb {
 
 static string GetDuckDBToTeradataTypeString(const LogicalType &type) {
-	switch(type.id()) {
-	case LogicalTypeId::TINYINT: return "BYTEINT";
-	case LogicalTypeId::DOUBLE: return "FLOAT";
-	case LogicalTypeId::BLOB: return "VARBYTE";
+	switch (type.id()) {
+	case LogicalTypeId::TINYINT:
+		return "BYTEINT";
+	case LogicalTypeId::DOUBLE:
+		return "FLOAT";
+	case LogicalTypeId::BLOB:
+		return "VARBYTE";
 	case LogicalTypeId::LIST:
 	case LogicalTypeId::STRUCT:
 	case LogicalTypeId::ENUM:
@@ -144,7 +147,6 @@ optional_ptr<CatalogEntry> TeradataTableSet::CreateTable(ClientContext &context,
 	return CreateEntry(std::move(tbl_entry));
 }
 
-
 void TeradataTableSet::LoadEntries(ClientContext &context) {
 	const auto &td_catalog = catalog.Cast<TeradataCatalog>();
 	auto &td_schema = schema.Cast<TeradataSchemaEntry>();
@@ -152,20 +154,19 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	auto &conn = td_catalog.GetConnection();
 
 	/*
-		"The DBC.ColumnsV[X] views provide complete information for table columns but provide only limited information
-		for view columns. For view columns, DBC.ColumnsV[X] provides a NULL value for ColumnType, DecimalTotalDigits,
-		DecimalFractionalDigits, CharType, ColumnLength, and other attributes related to data type."
+	    "The DBC.ColumnsV[X] views provide complete information for table columns but provide only limited information
+	    for view columns. For view columns, DBC.ColumnsV[X] provides a NULL value for ColumnType, DecimalTotalDigits,
+	    DecimalFractionalDigits, CharType, ColumnLength, and other attributes related to data type."
 
-		Therefore, we can filter on "ColumnType IS NOT NULL" to get only tables, without having to join with the
-		DBC.TablesV view.
+	    Therefore, we can filter on "ColumnType IS NOT NULL" to get only tables, without having to join with the
+	    DBC.TablesV view.
 	 */
 
 	// TODO: Sanitize the schema name
-	const auto query = StringUtil::Format(
-			"SELECT TableName, ColumnName, ColumnType FROM dbc.ColumnsV "
-			"WHERE DatabaseName = '%s' AND ColumnType IS NOT NULL "
-			"ORDER BY TableName, ColumnId"
-		, td_schema.name);
+	const auto query = StringUtil::Format("SELECT TableName, ColumnName, ColumnType FROM dbc.ColumnsV "
+	                                      "WHERE DatabaseName = '%s' AND ColumnType IS NOT NULL "
+	                                      "ORDER BY TableName, ColumnId",
+	                                      td_schema.name);
 
 	const auto result = conn.Query(query, false);
 
@@ -173,21 +174,21 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	info.schema = td_schema.name;
 
 	// Iterate over the chunks in the result
-	for(auto &chunk : result->Chunks()) {
+	for (auto &chunk : result->Chunks()) {
 		chunk.Flatten();
 		const auto count = chunk.size();
 		auto &tbl_name_vec = chunk.data[0];
 		auto &col_name_vec = chunk.data[1];
 		auto &col_type_vec = chunk.data[2];
 
-		for(idx_t row_idx = 0; row_idx < count; row_idx++) {
+		for (idx_t row_idx = 0; row_idx < count; row_idx++) {
 			const auto tbl_name = FlatVector::GetData<string_t>(tbl_name_vec)[row_idx];
 			const auto col_name = FlatVector::GetData<string_t>(col_name_vec)[row_idx];
 			const auto col_type = FlatVector::GetData<string_t>(col_type_vec)[row_idx];
 
-			if(tbl_name != info.table) {
+			if (tbl_name != info.table) {
 				// We have a new table
-				if(!info.table.empty()) {
+				if (!info.table.empty()) {
 					// Finish the previous table
 					entries[info.table] = make_uniq<TeradataTableEntry>(catalog, td_schema, info);
 				}
@@ -210,7 +211,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 		}
 	}
 
-	if(!info.table.empty()) {
+	if (!info.table.empty()) {
 		// Finish the last table
 		entries[info.table] = make_uniq<TeradataTableEntry>(catalog, td_schema, info);
 	}

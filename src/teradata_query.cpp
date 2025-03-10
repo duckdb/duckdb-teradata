@@ -56,13 +56,15 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 		td_ctx.Prepare(sql, td_types, names);
 
 		// Convert to DuckDB types
-		for(auto &td_type : td_types) {
+		for (auto &td_type : td_types) {
 			return_types.push_back(td_type.ToDuckDB());
 		}
 	}
 
-	if(td_types.empty()) {
-		throw BinderException("No fields returned by query \"%s\" - the query must be a SELECT statement that returns at least one column", sql);
+	if (td_types.empty()) {
+		throw BinderException("No fields returned by query \"%s\" - the query must be a SELECT statement that returns "
+		                      "at least one column",
+		                      sql);
 	}
 
 	auto result = make_uniq<TeradataBindData>();
@@ -82,7 +84,8 @@ struct TeradataQueryState final : GlobalTableFunctionState {
 	TeradataRequestContext td_ctx;
 	vector<TeradataType> td_types;
 	bool is_done = false;
-	explicit TeradataQueryState(TeradataConnection &con) : td_ctx(con) { }
+	explicit TeradataQueryState(TeradataConnection &con) : td_ctx(con) {
+	}
 };
 
 static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &context, TableFunctionInitInput &input) {
@@ -90,8 +93,8 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 	string sql = data.sql;
 
 	// If we dont have a SQL string, just copy from the table
-	if(sql.empty()) {
-		if(data.table_name.empty()) {
+	if (sql.empty()) {
+		if (data.table_name.empty()) {
 			throw InvalidInputException("Teradata query requires a valid SQL string");
 		}
 
@@ -106,10 +109,11 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 	result->td_ctx.Query(sql, result->td_types);
 
 	// Check that the types are still the same, in case we need to rebind
-	for(idx_t i = 0; i < result->td_types.size(); i++) {
+	for (idx_t i = 0; i < result->td_types.size(); i++) {
 		// TODO: Only look at TD id, but also check e.g. decimal precision
-		if(data.types[i] != result->td_types[i].ToDuckDB()) {
-			throw InvalidInputException("Teradata query schema has changed since bind, please re-execute or re-prepare the query");
+		if (data.types[i] != result->td_types[i].ToDuckDB()) {
+			throw InvalidInputException(
+			    "Teradata query schema has changed since bind, please re-execute or re-prepare the query");
 		}
 	}
 
@@ -122,13 +126,13 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
 	auto &state = data.global_state->Cast<TeradataQueryState>();
 
-	if(state.is_done) {
+	if (state.is_done) {
 		output.SetCardinality(0);
 		return;
 	}
 
 	// Fetch until we have a full chunk
-	if(!state.td_ctx.Fetch(output, state.td_types)) {
+	if (!state.td_ctx.Fetch(output, state.td_types)) {
 		state.is_done = true;
 	}
 }
@@ -146,7 +150,6 @@ TableFunction TeradataQueryFunction::GetFunction() {
 	function.function = TeradataQueryExec;
 	return function;
 }
-
 
 void TeradataQueryFunction::Register(DatabaseInstance &db) {
 	const auto function = TeradataQueryFunction::GetFunction();

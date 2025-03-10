@@ -14,6 +14,7 @@ public:
 	}
 
 	optional_ptr<CatalogEntry> CreateTable(ClientContext &context, BoundCreateTableInfo &info);
+
 protected:
 	void LoadEntries(ClientContext &context) override;
 };

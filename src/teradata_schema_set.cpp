@@ -15,13 +15,13 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	const auto result = conn.Query("SELECT DatabaseName, CommentString FROM DBC.DatabasesV", false);
 
 	// Now iterate over the result and create the schema entries
-	for(auto &chunk : result->Chunks()) {
+	for (auto &chunk : result->Chunks()) {
 		chunk.Flatten();
 		const auto count = chunk.size();
 		auto &name_vec = chunk.data[0];
 		auto &comment_vec = chunk.data[1];
 
-		for(idx_t row_idx = 0; row_idx < count; row_idx++) {
+		for (idx_t row_idx = 0; row_idx < count; row_idx++) {
 
 			const auto name = FlatVector::GetData<string_t>(name_vec)[row_idx].GetString();
 
@@ -35,4 +35,4 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	}
 }
 
-}
+} // namespace duckdb

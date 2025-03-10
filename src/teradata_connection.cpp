@@ -14,7 +14,7 @@ void TeradataConnection::Reconnect() {
 	dbc.use_presence_bits = 'N';
 	dbc.wait_across_crash = 'N';
 	dbc.tell_about_crash = 'Y';
-	dbc.loc_mode = 'Y'; // 'Local' mode (?);
+	dbc.loc_mode = 'Y';    // 'Local' mode (?);
 	dbc.var_len_req = 'Y'; // Required to pass parameter descriptor length, p.120
 	dbc.var_len_fetch = 'N';
 	dbc.save_resp_buf = 'N';
@@ -94,7 +94,6 @@ void TeradataConnection::Execute(const string &sql, DataChunk &chunk) {
 	ctx.Execute(sql, chunk);
 }
 
-
 unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize) {
 
 	// TODO: Pool request contexts
@@ -103,7 +102,7 @@ unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, boo
 	vector<TeradataType> types;
 	ctx->Query(sql, types);
 
-	if(materialize) {
+	if (materialize) {
 		// Fetch all into a CDC and return a materialized result
 		auto cdc = ctx->FetchAll(types);
 		return make_uniq<MaterializedTeradataQueryResult>(std::move(types), std::move(cdc));
@@ -112,8 +111,5 @@ unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, boo
 		return make_uniq<StreamingTeradataQueryResult>(std::move(types), std::move(ctx));
 	}
 }
-
-
-
 
 } // namespace duckdb

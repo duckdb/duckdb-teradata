@@ -8,10 +8,10 @@ namespace duckdb {
 
 class BinaryReader {
 public:
-	BinaryReader(const char* ptr, size_t len) : ptr(ptr), end(ptr + len), beg(ptr) {
+	BinaryReader(const char *ptr, size_t len) : ptr(ptr), end(ptr + len), beg(ptr) {
 	}
 
-	template<class T>
+	template <class T>
 	T Read() {
 		static_assert(std::is_trivial<T>::value, "Type must be trivial");
 
@@ -24,10 +24,10 @@ public:
 		return result;
 	}
 
-	const char* ReadBytes(size_t size) {
+	const char *ReadBytes(size_t size) {
 		CheckSize(size);
 
-		const char* result = ptr;
+		const char *result = ptr;
 		ptr += size;
 
 		return result;
@@ -49,9 +49,9 @@ private:
 		}
 	}
 
-	const char* ptr;
-	const char* end;
-	const char* beg;
+	const char *ptr;
+	const char *end;
+	const char *beg;
 };
 
-}
+} // namespace duckdb

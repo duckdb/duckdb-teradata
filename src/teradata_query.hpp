@@ -6,9 +6,8 @@ namespace duckdb {
 
 class DatabaseInstance;
 
-class TeradataBindData final : public TableFunctionData  {
+class TeradataBindData final : public TableFunctionData {
 public:
-
 	string schema_name;
 	string table_name;
 	string sql;
@@ -19,8 +18,12 @@ public:
 
 	bool is_read_only = false;
 
-	void SetCatalog(TeradataCatalog &catalog) { this->catalog = &catalog; }
-	optional_ptr<TeradataCatalog> GetCatalog() const { return catalog; }
+	void SetCatalog(TeradataCatalog &catalog) {
+		this->catalog = &catalog;
+	}
+	optional_ptr<TeradataCatalog> GetCatalog() const {
+		return catalog;
+	}
 
 private:
 	optional_ptr<TeradataCatalog> catalog;

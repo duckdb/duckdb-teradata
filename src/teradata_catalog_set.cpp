@@ -6,10 +6,8 @@
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
 
-
 namespace duckdb {
 TeradataCatalogSet::TeradataCatalogSet(Catalog &catalog) : catalog(catalog) {
-
 }
 
 void TeradataCatalogSet::TryLoadEntries(ClientContext &context) {
@@ -32,13 +30,12 @@ void TeradataCatalogSet::Scan(ClientContext &context, const std::function<void(C
 optional_ptr<CatalogEntry> TeradataCatalogSet::CreateEntry(unique_ptr<CatalogEntry> entry) {
 	lock_guard<mutex> l(entry_lock);
 	auto result = entry.get();
-	if(result->name.empty()) {
+	if (result->name.empty()) {
 		throw InternalException("TeradataCatalogSet::CreateEntry called with empty name");
 	}
 	entries.emplace(result->name, std::move(entry));
 	return result;
 }
-
 
 void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	string drop_query = "DROP ";
@@ -65,7 +62,6 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	entries.erase(info.name);
 }
 
-
 optional_ptr<CatalogEntry> TeradataCatalogSet::GetEntry(ClientContext &context, const string &name) {
 	TryLoadEntries(context);
 	{
@@ -83,7 +79,7 @@ optional_ptr<CatalogEntry> TeradataCatalogSet::GetEntry(ClientContext &context, 
 }
 
 TeradataInSchemaSet::TeradataInSchemaSet(TeradataSchemaEntry &schema)
-	: TeradataCatalogSet(schema.ParentCatalog()), schema(schema) {
+    : TeradataCatalogSet(schema.ParentCatalog()), schema(schema) {
 }
 
 optional_ptr<CatalogEntry> TeradataInSchemaSet::CreateEntry(unique_ptr<CatalogEntry> entry) {

@@ -298,7 +298,7 @@ void TeradataRequestConnection::Prepare(const string &query, vector<string> &nam
 		/*
 		//auto ttype = TeradataColumnType::Get(col_info.DataType);
 		if (ttype.type.id() == LogicalTypeId::INVALID) {
-			throw NotImplementedException("Unsupported Teradata Type: '%s'", ttype.name);
+		    throw NotImplementedException("Unsupported Teradata Type: '%s'", ttype.name);
 		}
 
 		types.emplace_back(std::move(ttype.type));

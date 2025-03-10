@@ -4,7 +4,6 @@
 
 #include "util/binary_reader.hpp"
 
-
 namespace duckdb {
 
 TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con) {
@@ -17,7 +16,7 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 
 	int32_t result = EM_OK;
 	DBCHINI(&result, cnta, &dbc);
-	if(result != EM_OK) {
+	if (result != EM_OK) {
 		throw IOException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 	dbc.i_sess_id = con.GetSessionId();
@@ -40,7 +39,7 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 	// Setup unified vector formats for each column
 	vector<UnifiedVectorFormat> formats;
 	formats.resize(chunk.ColumnCount());
-	for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
 		auto &col_vec = chunk.data[col_idx];
 		auto &format = formats[col_idx];
 		col_vec.ToUnifiedFormat(row_count, format);
@@ -51,14 +50,14 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 	vector<int32_t> lengths;
 	vector<int32_t> offsets;
 
-	for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 		lengths.push_back(0);
 		offsets.push_back(buffer.size());
-		for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
 			auto &format = formats[col_idx];
 
 			const auto row_idx = format.sel->get_index(out_idx);
-			if(!format.validity.RowIsValid(row_idx)) {
+			if (!format.validity.RowIsValid(row_idx)) {
 				// TODO: Use presence bits to encode null columns
 				// TODO: write null or something...
 				continue;
@@ -74,12 +73,12 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 		}
 	}
 
-	vector<char*> buffer_ptrs;
-	for(auto offset : offsets) {
+	vector<char *> buffer_ptrs;
+	for (auto offset : offsets) {
 		buffer_ptrs.push_back(buffer.data() + offset);
 	}
 
-	dbc.using_data_ptr_array = reinterpret_cast<char*>(buffer_ptrs.data());
+	dbc.using_data_ptr_array = reinterpret_cast<char *>(buffer_ptrs.data());
 	dbc.using_data_len_array = lengths.data();
 	dbc.using_data_count = chunk.size();
 
@@ -87,23 +86,15 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 
 	MatchParcel(PclENDSTATEMENT);
 
-	for(idx_t i = 1; i < chunk.size(); i++) {
+	for (idx_t i = 1; i < chunk.size(); i++) {
 		MatchParcel(PclSUCCESS);
 		MatchParcel(PclENDSTATEMENT);
 	}
 
-
 	EndRequest();
 }
 
-
-enum class TeradataColumnTypeVariant {
-	STANDARD,
-	NULLABLE,
-	PARAM_IN,
-	PARAM_INOUT,
-	PARAM_OUT
-};
+enum class TeradataColumnTypeVariant { STANDARD, NULLABLE, PARAM_IN, PARAM_INOUT, PARAM_OUT };
 
 struct TeradataColumnType {
 	TeradataType type;
@@ -117,183 +108,183 @@ static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
 	// Param out is 502 + the standard type
 	switch (type) {
 	case 400:
-		return { TeradataTypeId::BLOB, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::BLOB, TeradataColumnTypeVariant::STANDARD};
 	case 448:
-		return  { TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD};
 	case 449:
-		return  { TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::NULLABLE};
 	case 948:
-		return { TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_IN};
 	case 949:
-		return { TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 950:
-		return { TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 452:
-		return { TeradataTypeId::CHAR, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::STANDARD};
 	case 453:
-		return { TeradataTypeId::CHAR, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::NULLABLE};
 	case 952:
-		return { TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_IN};
 	case 953:
-		return { TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 954:
-		return { TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 472:
-		return { TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::STANDARD};
 	case 473:
-		return { TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::NULLABLE};
 	case 972:
-		return { TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_IN};
 	case 973:
-		return { TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 974:
-		return { TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 480:
-		return { TeradataTypeId::FLOAT, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::STANDARD};
 	case 481:
-		return { TeradataTypeId::FLOAT, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::NULLABLE};
 	case 980:
-		return { TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_IN};
 	case 981:
-		return { TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 982:
-		return { TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 496:
-		return { TeradataTypeId::INTEGER, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::STANDARD};
 	case 497:
-		return { TeradataTypeId::INTEGER, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::NULLABLE};
 	case 996:
-		return { TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_IN};
 	case 997:
-		return { TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 998:
-		return { TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 500:
-		return { TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::STANDARD};
 	case 501:
-		return { TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::NULLABLE};
 	case 1000:
-		return { TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_IN};
 	case 1001:
-		return { TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1002:
-		return { TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 600:
-		return { TeradataTypeId::BIGINT, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::STANDARD};
 	case 601:
-		return { TeradataTypeId::BIGINT, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::NULLABLE};
 	case 1100:
-		return { TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_IN};
 	case 1101:
-		return { TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1102:
-		return { TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 688:
-		return { TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD};
 	case 689:
-		return { TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE};
 	case 1188:
-		return { TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN};
 	case 1189:
-		return { TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1190:
-		return { TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 692:
-		return { TeradataTypeId::BYTE, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::STANDARD};
 	case 693:
-		return { TeradataTypeId::BYTE, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::NULLABLE};
 	case 1192:
-		return { TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_IN};
 	case 1193:
-		return { TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1194:
-		return { TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 697:
-		return { TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::STANDARD};
 	case 698:
-		return { TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::NULLABLE};
 	case 1197:
-		return { TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_IN};
 	case 1198:
-		return { TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1199:
-		return { TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 748:
-		return { TeradataTypeId::DATE_A, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::STANDARD};
 	case 749:
-		return { TeradataTypeId::DATE_A, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::NULLABLE};
 	case 1248:
-		return { TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_IN};
 	case 1249:
-		return { TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1250:
-		return { TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 752:
-		return { TeradataTypeId::DATE_T, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::STANDARD};
 	case 753:
-		return { TeradataTypeId::DATE_T, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::NULLABLE};
 	case 1252:
-		return { TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_IN};
 	case 1253:
-		return { TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1254:
-		return { TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 756:
-		return { TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::STANDARD };
+		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::STANDARD};
 	case 757:
-		return { TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::NULLABLE };
+		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::NULLABLE};
 	case 1256:
-		return { TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_IN };
+		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_IN};
 	case 1257:
-		return { TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_INOUT };
+		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1258:
-		return { TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_OUT };
+		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_OUT};
 	default:
 		// TODO: More types
 		throw NotImplementedException("Unknown data type: %d", type);
 	}
 }
 
-static bool TryParseTypeModsFromFormat(const char* ptr, int16_t len, int64_t &precision, int64_t &scale) {
+static bool TryParseTypeModsFromFormat(const char *ptr, int16_t len, int64_t &precision, int64_t &scale) {
 	const auto end = ptr + len;
-	if(ptr != end && *ptr == 'X') {
+	if (ptr != end && *ptr == 'X') {
 		ptr++;
-		if(ptr != end && *ptr == '(') {
+		if (ptr != end && *ptr == '(') {
 			ptr++;
 
 			// parse the length/precision
-			char* endptr;
+			char *endptr;
 			precision = strtol(ptr, &endptr, 10);
-			if(endptr == ptr) {
+			if (endptr == ptr) {
 				// no number found
 				return false;
 			}
 			ptr = endptr;
 
 			// skip the comma
-			if(ptr != end && *ptr == ',') {
+			if (ptr != end && *ptr == ',') {
 				ptr++;
 
 				// parse the scale
 				scale = strtol(ptr, &endptr, 10);
-				if(endptr == ptr) {
+				if (endptr == ptr) {
 					// no number found
 					return false;
 				}
 			}
-			if(ptr != end && *ptr == ')') {
+			if (ptr != end && *ptr == ')') {
 				ptr++;
 				return true;
 			}
@@ -314,7 +305,7 @@ void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &ty
 	BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
 
 	const auto prep_info = reader.Read<CliPrepInfoType>();
-	for(int16_t col_idx = 0; col_idx < prep_info.ColumnCount; col_idx++) {
+	for (int16_t col_idx = 0; col_idx < prep_info.ColumnCount; col_idx++) {
 		const auto col_info = reader.Read<CliPrepColInfoType>();
 
 		const auto name_len = reader.Read<int16_t>();
@@ -327,7 +318,7 @@ void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &ty
 
 		// TODO: Do something with the title?
 		const auto title_len = reader.Read<int16_t>();
-		//const auto title_str = reader.ReadBytes(title_len);
+		// const auto title_str = reader.ReadBytes(title_len);
 		reader.Skip(title_len);
 
 		// Get the type from the parcel
@@ -338,7 +329,7 @@ void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &ty
 		int64_t precision = 0;
 		int64_t scale = 0;
 
-		if(TryParseTypeModsFromFormat(format_str, format_len, precision, scale)) {
+		if (TryParseTypeModsFromFormat(format_str, format_len, precision, scale)) {
 			td_type.SetPrecision(precision);
 			td_type.SetScale(scale);
 		}
@@ -361,14 +352,14 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 
 	const auto parcel = FetchParcel();
 
-	if(parcel == PclENDSTATEMENT) {
+	if (parcel == PclENDSTATEMENT) {
 		// No data
 		EndRequest();
 		return;
 	}
 
 	// Otherwise, return records
-	if(parcel != PclDATAINFO) {
+	if (parcel != PclDATAINFO) {
 		throw IOException("Expected PclDATAINFO, got %d", parcel);
 	}
 
@@ -378,13 +369,13 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 
 	// Read the number of columns
 	const auto field_count = reader.Read<uint16_t>();
-	for(uint16_t field_idx = 0; field_idx < field_count; field_idx++) {
+	for (uint16_t field_idx = 0; field_idx < field_count; field_idx++) {
 		const auto id_type = reader.Read<uint16_t>();
 
 		auto col_type = GetTeradataTypeFromParcel(id_type);
 		auto &td_type = col_type.type;
 
-		if(td_type.IsDecimal()) {
+		if (td_type.IsDecimal()) {
 			const auto precision = reader.Read<uint16_t>();
 			const auto scale = reader.Read<uint16_t>();
 			td_type.SetPrecision(precision);
@@ -400,7 +391,7 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 
 void TeradataRequestContext::MatchParcel(uint16_t flavor) {
 	const auto result = FetchParcel();
-	if(result != flavor) {
+	if (result != flavor) {
 		throw IOException("Expected parcel flavor %d, got %d", flavor, result);
 	}
 }
@@ -413,14 +404,14 @@ uint16_t TeradataRequestContext::FetchParcel() {
 	int32_t result = EM_OK;
 	DBCHCL(&result, cnta, &dbc);
 
-	while(result == BUFOVFLOW) {
+	while (result == BUFOVFLOW) {
 		buffer.resize(dbc.fet_ret_data_len);
 		dbc.fet_data_ptr = buffer.data();
 		dbc.fet_max_data_len = buffer.size();
 		DBCHCL(&result, cnta, &dbc);
 	}
 
-	while(result == EM_NODATA) {
+	while (result == EM_NODATA) {
 		// No data, try again
 		// TODO: Yield the DuckDB task here, dont just busy loop
 		DBCHCL(&result, cnta, &dbc);
@@ -430,7 +421,7 @@ uint16_t TeradataRequestContext::FetchParcel() {
 		throw IOException("Failed to fetch result: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 
-	if(dbc.fet_parcel_flavor == PclFAILURE) {
+	if (dbc.fet_parcel_flavor == PclFAILURE) {
 		BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
 		const auto stmt_no = reader.Read<uint16_t>();
 		const auto info = reader.Read<uint16_t>();
@@ -438,16 +429,16 @@ uint16_t TeradataRequestContext::FetchParcel() {
 		const auto msg_len = reader.Read<uint16_t>();
 		const auto msg = reader.ReadBytes(msg_len);
 
-		throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code, string(msg, msg_len));
+		throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code,
+		                  string(msg, msg_len));
 	}
 
 	return dbc.fet_parcel_flavor;
 }
 
-
-template<class T>
+template <class T>
 static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
-	if(is_null) {
+	if (is_null) {
 		FlatVector::SetNull(col_vec, row_idx, true);
 		reader.Skip(sizeof(T));
 	} else {
@@ -455,7 +446,8 @@ static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool
 	}
 }
 
-static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, const TeradataType &td_type) {
+static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null,
+                          const TeradataType &td_type) {
 	switch (td_type.GetId()) {
 	case TeradataTypeId::VARBYTE: {
 		const auto length = reader.Read<uint16_t>();
@@ -483,13 +475,14 @@ static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, 
 	}
 }
 
-static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null, const TeradataType &td_type) {
+static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null,
+                             const TeradataType &td_type) {
 
 	// The logic differs slightly depending on what type of varchar we are dealing with
-	switch(td_type.GetId()) {
+	switch (td_type.GetId()) {
 	case TeradataTypeId::VARCHAR: {
 		const auto length = reader.Read<uint16_t>();
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(col_vec, row_idx, true);
 		} else {
 			// TODO: This is not enough, we need to handle shift-out characters
@@ -501,7 +494,7 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 	case TeradataTypeId::DATE_A:
 	case TeradataTypeId::CHAR: {
 		const auto max_length = td_type.GetLength();
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(col_vec, row_idx, true);
 			reader.Skip(max_length);
 		} else {
@@ -518,13 +511,13 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 }
 
 bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> &types) {
-	if(!is_open) {
+	if (!is_open) {
 		return false;
 	}
 
 	idx_t row_idx = 0;
 
-	while(row_idx < chunk.GetCapacity()) {
+	while (row_idx < chunk.GetCapacity()) {
 		const auto parcel = FetchParcel();
 
 		switch (parcel) {
@@ -551,14 +544,30 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> 
 
 				// Convert Type
 				switch (col_vec.GetType().id()) {
-				case LogicalTypeId::TINYINT: ReadField<int8_t>(reader, col_vec, row_idx, is_null); break;
-				case LogicalTypeId::UTINYINT: ReadField<uint8_t>(reader, col_vec, row_idx, is_null); break;
-				case LogicalTypeId::SMALLINT: ReadField<int16_t>(reader, col_vec, row_idx, is_null); break;
-				case LogicalTypeId::INTEGER: ReadField<int32_t>(reader, col_vec, row_idx, is_null); break;
-				case LogicalTypeId::BIGINT: ReadField<int64_t>(reader, col_vec, row_idx, is_null); break;
-				case LogicalTypeId::DOUBLE: ReadField<double>(reader, col_vec, row_idx, is_null); break;
-				case LogicalTypeId::BLOB: ReadBlobField(reader, col_vec, row_idx, is_null, types[col_idx]); break;
-				case LogicalTypeId::VARCHAR: ReadVarcharField(reader, col_vec, row_idx, is_null, types[col_idx]); break;
+				case LogicalTypeId::TINYINT:
+					ReadField<int8_t>(reader, col_vec, row_idx, is_null);
+					break;
+				case LogicalTypeId::UTINYINT:
+					ReadField<uint8_t>(reader, col_vec, row_idx, is_null);
+					break;
+				case LogicalTypeId::SMALLINT:
+					ReadField<int16_t>(reader, col_vec, row_idx, is_null);
+					break;
+				case LogicalTypeId::INTEGER:
+					ReadField<int32_t>(reader, col_vec, row_idx, is_null);
+					break;
+				case LogicalTypeId::BIGINT:
+					ReadField<int64_t>(reader, col_vec, row_idx, is_null);
+					break;
+				case LogicalTypeId::DOUBLE:
+					ReadField<double>(reader, col_vec, row_idx, is_null);
+					break;
+				case LogicalTypeId::BLOB:
+					ReadBlobField(reader, col_vec, row_idx, is_null, types[col_idx]);
+					break;
+				case LogicalTypeId::VARCHAR:
+					ReadVarcharField(reader, col_vec, row_idx, is_null, types[col_idx]);
+					break;
 				default:
 					throw NotImplementedException("Unsupported Teradata Type: '%s'", col_vec.GetType().ToString());
 				}
@@ -583,16 +592,16 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> 
 }
 
 unique_ptr<ColumnDataCollection> TeradataRequestContext::FetchAll(const vector<TeradataType> &types) {
-	if(!is_open) {
+	if (!is_open) {
 		throw IOException("Teradata request is not open");
 	}
-	if(types.empty()) {
+	if (types.empty()) {
 		throw IOException("Cannot fetch all data without types");
 	}
 
 	// Convert teradatat types to DuckDB types
 	vector<LogicalType> duck_types;
-	for(const auto &td_type : types) {
+	for (const auto &td_type : types) {
 		duck_types.push_back(td_type.ToDuckDB());
 	}
 
@@ -607,7 +616,7 @@ unique_ptr<ColumnDataCollection> TeradataRequestContext::FetchAll(const vector<T
 	chunk.Initialize(Allocator::DefaultAllocator(), duck_types);
 
 	// Fetch chunk by chunk and append to the CDC
-	while(Fetch(chunk, types)) {
+	while (Fetch(chunk, types)) {
 		result->Append(append_state, chunk);
 		chunk.Reset();
 	}
@@ -617,9 +626,9 @@ unique_ptr<ColumnDataCollection> TeradataRequestContext::FetchAll(const vector<T
 
 void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	// Setup the request
-	dbc.func = DBFIRQ;      // initiate request
-	dbc.change_opts = 'Y';  // change options to indicate that we want to change the options (to indicator mode)
-	dbc.resp_mode = 'I';    // indicator record mode
+	dbc.func = DBFIRQ;     // initiate request
+	dbc.change_opts = 'Y'; // change options to indicate that we want to change the options (to indicator mode)
+	dbc.resp_mode = 'I';   // indicator record mode
 	dbc.req_proc_opt = mode;
 
 	// prepare mode (with params)	= 'S'
@@ -627,7 +636,7 @@ void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	// execute mode					= 'E'
 
 	// Pass the SQL
-	dbc.req_ptr = const_cast<char*>(sql.c_str());
+	dbc.req_ptr = const_cast<char *>(sql.c_str());
 	dbc.req_len = static_cast<int32_t>(sql.size());
 
 	// Initialize request
@@ -650,9 +659,8 @@ void TeradataRequestContext::EndRequest() {
 	is_open = false;
 }
 
-
 void TeradataRequestContext::Close() {
-	if(!is_open) {
+	if (!is_open) {
 		return;
 	}
 
@@ -667,7 +675,7 @@ void TeradataRequestContext::Close() {
 }
 
 TeradataRequestContext::~TeradataRequestContext() {
-	if(is_open) {
+	if (is_open) {
 		Close();
 	}
 }
