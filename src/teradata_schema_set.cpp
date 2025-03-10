@@ -12,10 +12,10 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	// We have to issue a query to get the list of schemas
 	auto &conn = td_catalog.GetConnection();
 
-	const auto cdc = conn.Query("SELECT DatabaseName, CommentString FROM DBC.DatabasesV");
+	const auto result = conn.Query("SELECT DatabaseName, CommentString FROM DBC.DatabasesV", false);
 
 	// Now iterate over the result and create the schema entries
-	for(auto &chunk : cdc->Chunks()) {
+	for(auto &chunk : result->Chunks()) {
 		chunk.Flatten();
 		const auto count = chunk.size();
 		auto &name_vec = chunk.data[0];

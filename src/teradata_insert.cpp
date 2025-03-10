@@ -31,8 +31,6 @@ public:
 	TeradataTableEntry *table;
 	idx_t insert_count;
 	string insert_sql;
-
-	//unique_ptr<TeradataInsertRequest> request;
 };
 
 static string GetInsertSQL(const TeradataInsert& insert, const TeradataTableEntry &entry) {

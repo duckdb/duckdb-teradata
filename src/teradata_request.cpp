@@ -396,7 +396,6 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 
 		types.push_back(td_type);
 	}
-
 }
 
 void TeradataRequestContext::MatchParcel(uint16_t flavor) {
@@ -520,7 +519,7 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 
 bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> &types) {
 	if(!is_open) {
-		throw IOException("Teradata request is not open");
+		return false;
 	}
 
 	idx_t row_idx = 0;
@@ -572,7 +571,7 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> 
 		case PclENDSTATEMENT: {
 			EndRequest();
 			chunk.SetCardinality(row_idx);
-			return false;
+			return true;
 		}
 		default: {
 			throw IOException("Unexpected parcel flavor %d", parcel);
@@ -608,10 +607,7 @@ unique_ptr<ColumnDataCollection> TeradataRequestContext::FetchAll(const vector<T
 	chunk.Initialize(Allocator::DefaultAllocator(), duck_types);
 
 	// Fetch chunk by chunk and append to the CDC
-	auto has_more_chunks = true;
-
-	while(has_more_chunks) {
-		has_more_chunks = Fetch(chunk, types);
+	while(Fetch(chunk, types)) {
 		result->Append(append_state, chunk);
 		chunk.Reset();
 	}

@@ -95,14 +95,22 @@ void TeradataConnection::Execute(const string &sql, DataChunk &chunk) {
 }
 
 
-unique_ptr<ColumnDataCollection> TeradataConnection::Query(const string &sql) {
+unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize) {
 
 	// TODO: Pool request contexts
-	TeradataRequestContext ctx(*this);
-	vector<TeradataType> types;
-	ctx.Query(sql, types);
+	auto ctx = make_uniq<TeradataRequestContext>(*this);
 
-	return ctx.FetchAll(types);
+	vector<TeradataType> types;
+	ctx->Query(sql, types);
+
+	if(materialize) {
+		// Fetch all into a CDC and return a materialized result
+		auto cdc = ctx->FetchAll(types);
+		return make_uniq<MaterializedTeradataQueryResult>(std::move(types), std::move(cdc));
+	} else {
+		// Streaming result, pass on the context to the result so we can keep fetching it lazily
+		return make_uniq<StreamingTeradataQueryResult>(std::move(types), std::move(ctx));
+	}
 }
 
 

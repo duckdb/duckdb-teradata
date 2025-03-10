@@ -167,12 +167,13 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 			"ORDER BY TableName, ColumnId"
 		, td_schema.name);
 
-	const auto cdc = conn.Query(query);
+	const auto result = conn.Query(query, false);
 
 	CreateTableInfo info;
 	info.schema = td_schema.name;
 
-	for(auto &chunk : cdc->Chunks()) {
+	// Iterate over the chunks in the result
+	for(auto &chunk : result->Chunks()) {
 		chunk.Flatten();
 		const auto count = chunk.size();
 		auto &tbl_name_vec = chunk.data[0];
