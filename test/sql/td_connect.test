@@ -1,22 +1,26 @@
 require teradata
 
-statement ok
-attach '127.0.0.1/dbc,dbc' as x (TYPE TERADATA);
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
 
 statement ok
-drop table if exists x.val.t1;
+attach '${TD_LOGON}' as td (TYPE TERADATA);
 
 statement ok
-create table x.val.t1 (a int, b int);
+drop table if exists td.val.t1;
 
 statement ok
-insert into x.val.t1 values (1, 2), (3, 4);
+create table td.val.t1 (a int, b int);
+
+statement ok
+insert into td.val.t1 values (1, 2), (3, 4);
 
 query II rowsort
-select * from x.val.t1;
+select * from td.val.t1;
 ----
 1	2
 3	4
 
 statement ok
-drop table x.val.t1;
+drop table td.val.t1;
