@@ -4,11 +4,13 @@
 #include "teradata_table_entry.hpp"
 #include "teradata_transaction.hpp"
 #include "teradata_request.hpp"
+#include "teradata_query.hpp"
 
 #include "duckdb/parser/statement/insert_statement.hpp"
 #include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 #include "duckdb/planner/operator/logical_insert.hpp"
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
+
 
 namespace duckdb {
 
@@ -130,6 +132,7 @@ SinkResultType TeradataInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 	auto &transaction = TeradataTransaction::Get(context.client, state.table->catalog).Cast<TeradataTransaction>();
 	auto &conn = transaction.GetConnection();
 
+	// Execute, passing the data chunk as parameters.
 	conn.Execute(state.insert_sql, chunk);
 	state.insert_count += chunk.size();
 
@@ -180,8 +183,10 @@ static void MaterializeTeradataScans(PhysicalOperator &op) {
 	if (op.type == PhysicalOperatorType::TABLE_SCAN) {
 		auto &table_scan = op.Cast<PhysicalTableScan>();
 		if (TeradataCatalog::IsTeradataScan(table_scan.function.name)) {
-			// auto &bind_data = table_scan.bind_data->Cast<TeradataBindData>();
-			throw NotImplementedException("Cannot yet insert into Teradata tables while also scanning from them");
+			auto &bind_data = table_scan.bind_data->Cast<TeradataBindData>();
+
+			// If we are inserting into Teradata, materialize the all td-scans in this part of the plan
+			bind_data.is_materialized = true;
 		}
 	}
 

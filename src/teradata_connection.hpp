@@ -1,11 +1,11 @@
 #pragma once
 
+#include "teradata_common.hpp"
+#include "teradata_result.hpp"
+
 #include "duckdb/common/string.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
-
-#include "teradata_common.hpp"
-#include "teradata_result.hpp"
 
 namespace duckdb {
 

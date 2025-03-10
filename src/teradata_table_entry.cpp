@@ -34,6 +34,7 @@ TableFunction TeradataTableEntry::GetScanFunction(ClientContext &context, unique
 	}
 
 	result->is_read_only = transaction.IsReadOnly();
+	result->is_materialized = false;
 
 	// Set the bind data
 	bind_data = std::move(result);

@@ -12,7 +12,7 @@ class TeradataQueryResult;
 //----------------------------------------------------------------------------------------------------------------------
 class TeradataQueryResultIterator {
 public:
-	TeradataQueryResultIterator(TeradataQueryResult *result_p);
+	explicit TeradataQueryResultIterator(TeradataQueryResult *result_p);
 	TeradataQueryResultIterator &operator++();
 	bool operator!=(const TeradataQueryResultIterator &other) const;
 	DataChunk &operator*() const;

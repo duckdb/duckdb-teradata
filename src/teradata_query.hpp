@@ -17,6 +17,7 @@ public:
 	vector<TeradataType> td_types;
 
 	bool is_read_only = false;
+	bool is_materialized = false;
 
 	void SetCatalog(TeradataCatalog &catalog) {
 		this->catalog = &catalog;

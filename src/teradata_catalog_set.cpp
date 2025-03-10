@@ -41,8 +41,14 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	string drop_query = "DROP ";
 	drop_query += CatalogTypeToString(info.type) + " ";
 	if (info.if_not_found == OnEntryNotFound::RETURN_NULL) {
-		drop_query += " IF EXISTS ";
+
+		// Teradata doesnt support IF EXISTS, so check if the entry exists first
+		const auto entry = GetEntry(context, info.name);
+		if (!entry) {
+			return;
+		}
 	}
+
 	if (!info.schema.empty()) {
 		drop_query += KeywordHelper::WriteQuoted(info.schema, '"') + ".";
 	}

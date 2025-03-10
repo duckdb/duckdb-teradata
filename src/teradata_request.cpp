@@ -36,6 +36,8 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 	const auto row_count = chunk.size();
 	const auto col_count = chunk.ColumnCount();
 
+	D_ASSERT(row_count > 1);
+
 	// Setup unified vector formats for each column
 	vector<UnifiedVectorFormat> formats;
 	formats.resize(chunk.ColumnCount());
@@ -512,6 +514,7 @@ static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_id
 
 bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> &types) {
 	if (!is_open) {
+		chunk.SetCardinality(0);
 		return false;
 	}
 
