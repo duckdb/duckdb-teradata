@@ -199,7 +199,7 @@ unordered_map<string, TeradataTypeId> TeradataType::code_map = {
 };
 
 bool TeradataType::HasLengthModifier() const {
-	switch(id) {
+	switch (id) {
 	case TeradataTypeId::BYTE:
 	case TeradataTypeId::VARBYTE:
 	case TeradataTypeId::BLOB:
@@ -213,55 +213,65 @@ bool TeradataType::HasLengthModifier() const {
 }
 
 TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
-	if(type.IsJSONType()) {
+	if (type.IsJSONType()) {
 		return TeradataTypeId::JSON;
 	}
 
 	switch (type.id()) {
-		// Boolean (does not exist in Teradata, so map to byteint)
-		case LogicalTypeId::BOOLEAN: return TeradataTypeId::BYTEINT;
+	// Boolean (does not exist in Teradata, so map to byteint)
+	case LogicalTypeId::BOOLEAN:
+		return TeradataTypeId::BYTEINT;
 
-		// Integer types
-		case LogicalTypeId::TINYINT: return TeradataTypeId::BYTEINT;
-		case LogicalTypeId::SMALLINT: return TeradataTypeId::SMALLINT;
-		case LogicalTypeId::INTEGER: return TeradataTypeId::INTEGER;
-		case LogicalTypeId::BIGINT: return TeradataTypeId::BIGINT;
+	// Integer types
+	case LogicalTypeId::TINYINT:
+		return TeradataTypeId::BYTEINT;
+	case LogicalTypeId::SMALLINT:
+		return TeradataTypeId::SMALLINT;
+	case LogicalTypeId::INTEGER:
+		return TeradataTypeId::INTEGER;
+	case LogicalTypeId::BIGINT:
+		return TeradataTypeId::BIGINT;
 
-		// Floating point types
-		case LogicalTypeId::FLOAT:
-		case LogicalTypeId::DOUBLE: {
-			throw NotImplementedException("Double/float type not supported");
-		}
+	// Floating point types
+	case LogicalTypeId::FLOAT:
+	case LogicalTypeId::DOUBLE: {
+		throw NotImplementedException("Double/float type not supported");
+	}
 
-		// Decimal type
-		case LogicalTypeId::DECIMAL: {
-			throw NotImplementedException("Decimal type not supported");
-		}
+	// Decimal type
+	case LogicalTypeId::DECIMAL: {
+		throw NotImplementedException("Decimal type not supported");
+	}
 
-		// Time types
-		case LogicalTypeId::TIMESTAMP: return TeradataTypeId::TIMESTAMP;
-		case LogicalTypeId::DATE: return TeradataTypeId::DATE;
-		case LogicalTypeId::TIME: return TeradataTypeId::TIME;
-		case LogicalTypeId::TIME_TZ: return TeradataTypeId::TIME_TZ;
-		case LogicalTypeId::TIMESTAMP_TZ: return TeradataTypeId::TIMESTAMP_TZ;
+	// Time types
+	case LogicalTypeId::TIMESTAMP:
+		return TeradataTypeId::TIMESTAMP;
+	case LogicalTypeId::DATE:
+		return TeradataTypeId::DATE;
+	case LogicalTypeId::TIME:
+		return TeradataTypeId::TIME;
+	case LogicalTypeId::TIME_TZ:
+		return TeradataTypeId::TIME_TZ;
+	case LogicalTypeId::TIMESTAMP_TZ:
+		return TeradataTypeId::TIMESTAMP_TZ;
 
-		// Varchar
-		case LogicalTypeId::VARCHAR: {
-			// Since DuckDB types are variable size, set the length to the maximum
-			TeradataType char_type = TeradataTypeId::VARCHAR;
-			char_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
-			return char_type;
-		}
+	// Varchar
+	case LogicalTypeId::VARCHAR: {
+		// Since DuckDB types are variable size, set the length to the maximum
+		TeradataType char_type = TeradataTypeId::VARCHAR;
+		char_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
+		return char_type;
+	}
 
-		// Blob
-		case LogicalTypeId::BLOB: {
-			// Since DuckDB types are variable size, set the length to the maximum
-			TeradataType blob_type = TeradataTypeId::BLOB;
-			blob_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
-			return blob_type;
-		}
-		default:
-			throw NotImplementedException("Cannot convert DuckDB type '%s' to Teradata type", type.ToString());
+	// Blob
+	case LogicalTypeId::BLOB: {
+		// Since DuckDB types are variable size, set the length to the maximum
+		TeradataType blob_type = TeradataTypeId::BLOB;
+		blob_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
+		return blob_type;
+	}
+	default:
+		throw NotImplementedException("Cannot convert DuckDB type '%s' to Teradata type", type.ToString());
 	}
 }
 

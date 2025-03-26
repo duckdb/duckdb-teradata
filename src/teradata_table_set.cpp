@@ -150,10 +150,11 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 
 	// TODO: Sanitize the schema name
 	const auto query = StringUtil::Format("SELECT T.TableName, C.ColumnName, C.ColumnType, C.ColumnLength "
-		"FROM dbc.TablesV AS T JOIN dbc.ColumnsV AS C "
-		"ON T.TableName = C.TableName AND T.DatabaseName = C.DatabaseName "
-		"WHERE T.DatabaseName = '%s' AND T.TableKind = 'T' "
-		"ORDER BY T.TableName, C.ColumnId", td_schema.name);
+	                                      "FROM dbc.TablesV AS T JOIN dbc.ColumnsV AS C "
+	                                      "ON T.TableName = C.TableName AND T.DatabaseName = C.DatabaseName "
+	                                      "WHERE T.DatabaseName = '%s' AND T.TableKind = 'T' "
+	                                      "ORDER BY T.TableName, C.ColumnId",
+	                                      td_schema.name);
 
 	/*
 	const auto query = StringUtil::Format("SELECT TableName, ColumnName, ColumnType FROM dbc.ColumnsV "
@@ -200,7 +201,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 			// Add the columns
 			try {
 				TeradataType td_type = TeradataType::FromShortCode(col_type.GetData());
-				if(td_type.HasLengthModifier()) {
+				if (td_type.HasLengthModifier()) {
 					td_type.SetLength(col_size);
 				}
 

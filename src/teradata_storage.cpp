@@ -25,7 +25,7 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 	string database = user;
 
 	// Try to get the database name from the options
-	for(auto &option : info.options) {
+	for (auto &option : info.options) {
 		auto lower_name = StringUtil::Lower(option.first);
 		if (lower_name == "database") {
 			database = option.second.ToString();

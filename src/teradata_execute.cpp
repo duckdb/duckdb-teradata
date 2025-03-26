@@ -6,14 +6,14 @@
 
 #include <duckdb/main/extension_util.hpp>
 
-namespace duckdb  {
+namespace duckdb {
 
 //----------------------------------------------------------------------------------------------------------------------
 // Bind
 //----------------------------------------------------------------------------------------------------------------------
 struct TeradataExecuteBindData final : public TableFunctionData {
 	TeradataExecuteBindData(TeradataCatalog &td_catalog, string query_p)
-		: td_catalog(td_catalog), query(std::move(query_p)) {
+	    : td_catalog(td_catalog), query(std::move(query_p)) {
 	}
 
 	bool finished = false;
@@ -22,7 +22,7 @@ struct TeradataExecuteBindData final : public TableFunctionData {
 };
 
 static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-													  vector<LogicalType> &return_types, vector<string> &names) {
+                                     vector<LogicalType> &return_types, vector<string> &names) {
 	return_types.emplace_back(LogicalType::BOOLEAN);
 	names.emplace_back("Success");
 
@@ -60,8 +60,7 @@ static void Execute(ClientContext &context, TableFunctionInput &data_p, DataChun
 //----------------------------------------------------------------------------------------------------------------------
 
 void TeradataExecuteFunction::Register(DatabaseInstance &db) {
-	TableFunction func("teradata_execute", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-		Execute, Bind);
+	TableFunction func("teradata_execute", {LogicalType::VARCHAR, LogicalType::VARCHAR}, Execute, Bind);
 	ExtensionUtil::RegisterFunction(db, func);
 }
 
