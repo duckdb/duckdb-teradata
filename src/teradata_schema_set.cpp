@@ -17,6 +17,11 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	auto &conn = td_catalog.GetConnection();
 
 	// Select the schema name and the comment string
+	// TODO: Do something like this to pull in the immediate children of the database as schemas
+	//string query = "SELECT C.Child, D.CommentString FROM DBC.ChildrenV AS C JOIN DBC.DatabasesV AS D ON D.DatabaseName = C.Child WHERE C.Parent = ";
+	//query += KeywordHelper::WriteQuoted(schema_to_load);
+	//query += UNION (SELECT DatabaseName, CommentString FROM DBC.DatabasesV WHERE DatabaseName = ''dbc'')';
+
 	string query = "SELECT DatabaseName, CommentString FROM DBC.DatabasesV";
 	query += " WHERE DatabaseName = " + KeywordHelper::WriteQuoted(schema_to_load);
 
