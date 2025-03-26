@@ -33,7 +33,10 @@ optional_ptr<CatalogEntry> TeradataCatalogSet::CreateEntry(unique_ptr<CatalogEnt
 	if (result->name.empty()) {
 		throw InternalException("TeradataCatalogSet::CreateEntry called with empty name");
 	}
+
+	entry_map.emplace(result->name, result->name);
 	entries.emplace(result->name, std::move(entry));
+
 	return result;
 }
 
@@ -80,8 +83,19 @@ optional_ptr<CatalogEntry> TeradataCatalogSet::GetEntry(ClientContext &context, 
 
 	// entry not found
 	// TODO: Try to reload the catalog!
+	auto name_entry = entry_map.find(name);
+	if (name_entry == entry_map.end()) {
+		// no entry found
+		return nullptr;
+	}
+	// try again with the entry we found in the case insensitive map
+	auto entry = entries.find(name_entry->second);
+	if (entry == entries.end()) {
+		// still not found
+		return nullptr;
+	}
 
-	return nullptr;
+	return entry->second.get();
 }
 
 TeradataInSchemaSet::TeradataInSchemaSet(TeradataSchemaEntry &schema)

@@ -6,13 +6,21 @@
 
 namespace duckdb {
 
+TeradataSchemaSet::TeradataSchemaSet(Catalog &catalog_p, string schema_to_load_p)
+	: TeradataCatalogSet(catalog_p), schema_to_load(std::move(schema_to_load_p)) {
+}
+
 void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	const auto &td_catalog = catalog.Cast<TeradataCatalog>();
 
 	// We have to issue a query to get the list of schemas
 	auto &conn = td_catalog.GetConnection();
 
-	const auto result = conn.Query("SELECT DatabaseName, CommentString FROM DBC.DatabasesV", false);
+	// Select the schema name and the comment string
+	string query = "SELECT DatabaseName, CommentString FROM DBC.DatabasesV";
+	query += " WHERE DatabaseName = " + KeywordHelper::WriteQuoted(schema_to_load);
+
+	const auto result = conn.Query(query, false);
 
 	// Now iterate over the result and create the schema entries
 	for (auto &chunk : result->Chunks()) {
@@ -30,7 +38,9 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 			info.schema = name;
 			info.comment = comment_vec.GetValue(row_idx);
 
-			entries[name] = make_uniq<TeradataSchemaEntry>(catalog, info);
+			// Pass the entry along
+			auto entry = make_uniq<TeradataSchemaEntry>(catalog, info);
+			CreateEntry(std::move(entry));
 		}
 	}
 }

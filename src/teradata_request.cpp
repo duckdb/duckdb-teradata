@@ -36,7 +36,7 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 	const auto row_count = chunk.size();
 	const auto col_count = chunk.ColumnCount();
 
-	D_ASSERT(row_count > 1);
+	D_ASSERT(row_count > 0);
 
 	// Setup unified vector formats for each column
 	vector<UnifiedVectorFormat> formats;
@@ -458,7 +458,7 @@ static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, 
 		} else {
 			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
 			const auto text_ptr = reader.ReadBytes(length);
-			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, length);
+			data_ptr[row_idx] = StringVector::AddStringOrBlob(col_vec, text_ptr, length);
 		}
 	} break;
 	case TeradataTypeId::BYTE: {
@@ -469,7 +469,7 @@ static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, 
 		} else {
 			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
 			const auto text_ptr = reader.ReadBytes(max_length);
-			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, max_length);
+			data_ptr[row_idx] = StringVector::AddStringOrBlob(col_vec, text_ptr, max_length);
 		}
 	} break;
 	default:

@@ -12,9 +12,15 @@ namespace duckdb {
 // Initialization
 //----------------------------------------------------------------------------------------------------------------------
 
-TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string) : Catalog(db), schemas(*this) {
+TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &database_to_load)
+	: Catalog(db), schemas(*this, database_to_load), default_schema(database_to_load) {
 	conn = make_uniq<TeradataConnection>(logon_string);
 	path = logon_string;
+
+	// No empty default schema
+	if(default_schema.empty()) {
+		throw InvalidInputException("No default schema provided for TeradataCatalog!");
+	}
 }
 
 TeradataCatalog::~TeradataCatalog() {
