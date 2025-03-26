@@ -1,10 +1,11 @@
 #pragma once
 
+#include "teradata_common.hpp"
+#include "teradata_result.hpp"
+
 #include "duckdb/common/string.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/types/data_chunk.hpp"
-
-#include "teradata_common.hpp"
 
 namespace duckdb {
 
@@ -33,6 +34,14 @@ public:
 
 	void Reconnect();
 	void Disconnect();
+
+	void Execute(const string &sql);
+
+	// Execute a parameterized statement, once for each row in the chunk
+	void Execute(const string &sql, DataChunk &chunk);
+
+	// Execute a query with a result set, optionally materializing everything
+	unique_ptr<TeradataQueryResult> Query(const string &sql, bool materialize);
 
 private:
 	string logon_string;

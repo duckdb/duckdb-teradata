@@ -1,0 +1,26 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+statement ok
+attach '${TD_LOGON}' as td (TYPE TERADATA);
+
+statement ok
+drop table if exists td.val.t1;
+
+statement ok
+create table td.val.t1 (a int, b int);
+
+statement ok
+insert into td.val.t1 values (1, 2), (3, 4);
+
+query II rowsort
+select * from td.val.t1;
+----
+1	2
+3	4
+
+statement ok
+drop table td.val.t1;

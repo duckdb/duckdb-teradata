@@ -7,7 +7,7 @@ namespace duckdb {
 // Set of schemas in the catalog
 class TeradataSchemaSet final : public TeradataCatalogSet {
 public:
-    explicit TeradataSchemaSet(Catalog &catalog) : TeradataCatalogSet(catalog) {
+	explicit TeradataSchemaSet(Catalog &catalog) : TeradataCatalogSet(catalog) {
 	}
 
 protected:
@@ -15,4 +15,4 @@ protected:
 	void LoadEntries(ClientContext &context) override;
 };
 
-}
+} // namespace duckdb

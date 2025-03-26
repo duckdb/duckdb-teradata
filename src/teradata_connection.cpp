@@ -1,5 +1,6 @@
 #include "teradata_connection.hpp"
 #include "teradata_common.hpp"
+#include "teradata_request.hpp"
 
 namespace duckdb {
 
@@ -13,8 +14,8 @@ void TeradataConnection::Reconnect() {
 	dbc.use_presence_bits = 'N';
 	dbc.wait_across_crash = 'N';
 	dbc.tell_about_crash = 'Y';
-	dbc.loc_mode = 'Y'; // 'Local' mode (?);
-	dbc.var_len_req = 'N';
+	dbc.loc_mode = 'Y';    // 'Local' mode (?);
+	dbc.var_len_req = 'Y'; // Required to pass parameter descriptor length, p.120
 	dbc.var_len_fetch = 'N';
 	dbc.save_resp_buf = 'N';
 	dbc.two_resp_bufs = 'N';
@@ -51,21 +52,12 @@ void TeradataConnection::Reconnect() {
 	dbc.fet_max_data_len = sizeof(buf);
 
 	dbc.i_req_id = dbc.o_req_id;
-	dbc.i_req_id = dbc.o_req_id;
 
 	// Now call the fetch command
 	DBCHCL(&result, cnta, &dbc);
 	if (result != EM_OK) {
 		// Failed to fetch
 		throw IOException("Failed to fetch from Teradata: %s", string(dbc.msg_text, dbc.msg_len));
-	}
-
-	// Now we can end the fetch
-	dbc.func = DBFFET;
-	DBCHCL(&result, cnta, &dbc);
-	if (result != EM_OK) {
-		// Failed to end the fetch
-		throw IOException("Failed to end fetch from Teradata: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 
 	session_id = dbc.o_sess_id;
@@ -88,6 +80,36 @@ void TeradataConnection::Disconnect() {
 	}
 
 	is_connected = false;
+}
+
+void TeradataConnection::Execute(const string &sql) {
+
+	// TODO: Pool request contexts
+	TeradataRequestContext ctx(*this);
+	ctx.Execute(sql);
+}
+
+void TeradataConnection::Execute(const string &sql, DataChunk &chunk) {
+	TeradataRequestContext ctx(*this);
+	ctx.Execute(sql, chunk);
+}
+
+unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize) {
+
+	// TODO: Pool request contexts
+	auto ctx = make_uniq<TeradataRequestContext>(*this);
+
+	vector<TeradataType> types;
+	ctx->Query(sql, types);
+
+	if (materialize) {
+		// Fetch all into a CDC and return a materialized result
+		auto cdc = ctx->FetchAll(types);
+		return make_uniq<MaterializedTeradataQueryResult>(std::move(types), std::move(cdc));
+	} else {
+		// Streaming result, pass on the context to the result so we can keep fetching it lazily
+		return make_uniq<StreamingTeradataQueryResult>(std::move(types), std::move(ctx));
+	}
 }
 
 } // namespace duckdb

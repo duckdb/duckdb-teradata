@@ -9,48 +9,41 @@ namespace duckdb {
 
 class TeradataConnection;
 
-enum class TeradataRequestStatus : uint8_t { READY, OPEN, DONE, CLOSED };
-
-class TeradataRequest {
+class TeradataRequestContext {
 public:
-	~TeradataRequest() {
-		Close();
-	}
-	void Close();
-	TeradataRequestStatus GetStatus() const {
-		return status;
-	}
+	explicit TeradataRequestContext(const TeradataConnection &con);
+	void Init(const TeradataConnection &con);
 
-protected:
-	explicit TeradataRequest(Int32 session_id_p);
-	PclFlavor FetchNextParcel();
-	void MatchNextParcel(PclFlavor flavor);
+	// Execute a statement without returning any data
+	void Execute(const string &sql);
 
-protected:
-	DBCAREA dbc;
-	Int32 session_id;
-	char cnta[4];
-	TeradataRequestStatus status;
-	vector<char> buffer;
-};
+	// Execute a paramterized statment, once for each row in the chunk
+	void Execute(const string &sql, DataChunk &chunk);
 
-// TODO: we should pass the connection to the request instead of the session_id
-// Then the request can reconnect if needed
-class TeradataPrepareRequest final : public TeradataRequest {
-public:
-	explicit TeradataPrepareRequest(Int32 session_id_p, const string &sql);
-	void GetColumns(vector<string> &names, vector<TeradataType> &types);
-};
+	// Prepare a statement, returning the types of the result set
+	void Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names);
 
-class TeradataSqlRequest final : public TeradataRequest {
-public:
-	explicit TeradataSqlRequest(Int32 session_id_p, const string &sql);
-	void FetchNextChunk(DataChunk &chunk);
-	const vector<TeradataType> &GetTypes() const { return td_types; }
-	static unique_ptr<ColumnDataCollection> Execute(const TeradataConnection &conn, const string &sql);
+	// Issue a SQL query and return the types of the result set
+	void Query(const string &sql, vector<TeradataType> &types);
+
+	// Fetch the next data chunk after calling Query. Returns true if there is more data to fetch
+	bool Fetch(DataChunk &chunk, const vector<TeradataType> &types);
+
+	// Fetch all data after calling Query, into a ColumnDataCollection.
+	unique_ptr<ColumnDataCollection> FetchAll(const vector<TeradataType> &types);
+	~TeradataRequestContext();
 
 private:
-	vector<TeradataType> td_types;
+	void BeginRequest(const string &sql, char mode);
+	void EndRequest();
+	void Close();
+	void MatchParcel(uint16_t flavor);
+	uint16_t FetchParcel();
+
+	DBCAREA dbc = {};
+	char cnta[4] = {};
+	vector<char> buffer;
+	bool is_open = false;
 };
 
 } // namespace duckdb

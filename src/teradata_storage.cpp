@@ -2,6 +2,8 @@
 #include "teradata_catalog.hpp"
 #include "teradata_transcation_manager.hpp"
 
+#include "duckdb/main/secret/secret_manager.hpp"
+
 namespace duckdb {
 
 static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, ClientContext &context,

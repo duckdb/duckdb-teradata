@@ -1,5 +1,4 @@
 #include "teradata_schema_set.hpp"
-#include "teradata_request.hpp"
 #include "teradata_catalog.hpp"
 #include "teradata_schema_entry.hpp"
 
@@ -11,19 +10,18 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	const auto &td_catalog = catalog.Cast<TeradataCatalog>();
 
 	// We have to issue a query to get the list of schemas
-	const auto &conn = td_catalog.GetConnection();
+	auto &conn = td_catalog.GetConnection();
 
-	const auto cdc = TeradataSqlRequest::Execute(conn,
-		"SELECT DatabaseName, CommentString FROM DBC.DatabasesV");
+	const auto result = conn.Query("SELECT DatabaseName, CommentString FROM DBC.DatabasesV", false);
 
 	// Now iterate over the result and create the schema entries
-	for(auto &chunk : cdc->Chunks()) {
+	for (auto &chunk : result->Chunks()) {
 		chunk.Flatten();
 		const auto count = chunk.size();
 		auto &name_vec = chunk.data[0];
 		auto &comment_vec = chunk.data[1];
 
-		for(idx_t row_idx = 0; row_idx < count; row_idx++) {
+		for (idx_t row_idx = 0; row_idx < count; row_idx++) {
 
 			const auto name = FlatVector::GetData<string_t>(name_vec)[row_idx].GetString();
 
@@ -37,4 +35,4 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	}
 }
 
-}
+} // namespace duckdb

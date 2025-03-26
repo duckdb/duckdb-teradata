@@ -55,5 +55,4 @@ namespace duckdb {
 // 	vector<TeradataType> children;
 // };
 
-
 } // namespace duckdb

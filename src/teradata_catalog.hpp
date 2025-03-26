@@ -41,6 +41,10 @@ public:
 	string GetCatalogType() override;
 	string GetDBPath() override;
 
+	static bool IsTeradataScan(const string &name) {
+		return name == "teradata_query" || name == "teradata_scan";
+	}
+
 private:
 	unique_ptr<TeradataConnection> conn;
 	string path;

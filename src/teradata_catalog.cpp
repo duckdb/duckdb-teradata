@@ -2,7 +2,6 @@
 #include "teradata_connection.hpp"
 #include "teradata_common.hpp"
 
-
 #include "teradata_schema_set.hpp"
 #include "teradata_schema_entry.hpp"
 #include "teradata_table_entry.hpp"
@@ -44,15 +43,15 @@ void TeradataCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
 optional_ptr<SchemaCatalogEntry> TeradataCatalog::GetSchema(CatalogTransaction transaction, const string &schema_name,
                                                             OnEntryNotFound if_not_found,
                                                             QueryErrorContext error_context) {
-	if(schema_name == DEFAULT_SCHEMA) {
+	if (schema_name == DEFAULT_SCHEMA) {
 		return GetSchema(transaction, default_schema, if_not_found, error_context);
 	}
 
 	auto entry = schemas.GetEntry(transaction.GetContext(), schema_name);
-	if(!entry && if_not_found != OnEntryNotFound::RETURN_NULL) {
+	if (!entry && if_not_found != OnEntryNotFound::RETURN_NULL) {
 		throw BinderException("Schema \"%s\" not found", schema_name);
 	}
-	return reinterpret_cast<SchemaCatalogEntry*>(entry.get());
+	return reinterpret_cast<SchemaCatalogEntry *>(entry.get());
 }
 
 void TeradataCatalog::DropSchema(ClientContext &context, DropInfo &info) {
@@ -62,11 +61,6 @@ void TeradataCatalog::DropSchema(ClientContext &context, DropInfo &info) {
 //----------------------------------------------------------------------------------------------------------------------
 // Table Management
 //----------------------------------------------------------------------------------------------------------------------
-
-unique_ptr<PhysicalOperator> TeradataCatalog::PlanInsert(ClientContext &context, LogicalInsert &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
-	throw NotImplementedException("TeradataCatalog::PlanInsert");
-}
 
 unique_ptr<PhysicalOperator> TeradataCatalog::PlanCreateTableAs(ClientContext &context, LogicalCreateTable &op,
                                                                 unique_ptr<PhysicalOperator> plan) {

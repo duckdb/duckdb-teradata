@@ -1,15 +1,13 @@
 #include "teradata_catalog_set.hpp"
 #include "teradata_schema_entry.hpp"
+#include "teradata_transaction.hpp"
+#include "teradata_connection.hpp"
 
 #include "duckdb/catalog/catalog.hpp"
-
-#include <teradata_request.hpp>
-#include <teradata_transaction.hpp>
-#include <duckdb/parser/parsed_data/drop_info.hpp>
+#include "duckdb/parser/parsed_data/drop_info.hpp"
 
 namespace duckdb {
 TeradataCatalogSet::TeradataCatalogSet(Catalog &catalog) : catalog(catalog) {
-
 }
 
 void TeradataCatalogSet::TryLoadEntries(ClientContext &context) {
@@ -32,20 +30,25 @@ void TeradataCatalogSet::Scan(ClientContext &context, const std::function<void(C
 optional_ptr<CatalogEntry> TeradataCatalogSet::CreateEntry(unique_ptr<CatalogEntry> entry) {
 	lock_guard<mutex> l(entry_lock);
 	auto result = entry.get();
-	if(result->name.empty()) {
+	if (result->name.empty()) {
 		throw InternalException("TeradataCatalogSet::CreateEntry called with empty name");
 	}
 	entries.emplace(result->name, std::move(entry));
 	return result;
 }
 
-
 void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	string drop_query = "DROP ";
 	drop_query += CatalogTypeToString(info.type) + " ";
 	if (info.if_not_found == OnEntryNotFound::RETURN_NULL) {
-		drop_query += " IF EXISTS ";
+
+		// Teradata doesnt support IF EXISTS, so check if the entry exists first
+		const auto entry = GetEntry(context, info.name);
+		if (!entry) {
+			return;
+		}
 	}
+
 	if (!info.schema.empty()) {
 		drop_query += KeywordHelper::WriteQuoted(info.schema, '"') + ".";
 	}
@@ -55,14 +58,15 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	}
 
 	// Execute the drop query
-	auto &transaction = TeradataTransaction::Get(context, catalog).Cast<TeradataTransaction>();
-	TeradataSqlRequest::Execute(transaction.GetConnection(), drop_query);
+	const auto &transaction = TeradataTransaction::Get(context, catalog).Cast<TeradataTransaction>();
+	auto &conn = transaction.GetConnection();
+
+	conn.Execute(drop_query);
 
 	// erase the entry from the catalog set
 	lock_guard<mutex> l(entry_lock);
 	entries.erase(info.name);
 }
-
 
 optional_ptr<CatalogEntry> TeradataCatalogSet::GetEntry(ClientContext &context, const string &name) {
 	TryLoadEntries(context);
@@ -81,7 +85,7 @@ optional_ptr<CatalogEntry> TeradataCatalogSet::GetEntry(ClientContext &context, 
 }
 
 TeradataInSchemaSet::TeradataInSchemaSet(TeradataSchemaEntry &schema)
-	: TeradataCatalogSet(schema.ParentCatalog()), schema(schema) {
+    : TeradataCatalogSet(schema.ParentCatalog()), schema(schema) {
 }
 
 optional_ptr<CatalogEntry> TeradataInSchemaSet::CreateEntry(unique_ptr<CatalogEntry> entry) {
