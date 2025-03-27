@@ -43,6 +43,9 @@ protected:
 	Catalog &catalog;
 	unordered_map<string, unique_ptr<CatalogEntry>> entries = {};
 
+	// Case insensitive entry map
+	case_insensitive_map_t<string> entry_map = {};
+
 private:
 	void TryLoadEntries(ClientContext &context);
 	mutex load_lock;

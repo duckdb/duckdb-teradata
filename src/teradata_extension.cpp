@@ -3,6 +3,7 @@
 #include "teradata_extension.hpp"
 #include "teradata_scan.hpp"
 #include "teradata_query.hpp"
+#include "teradata_execute.hpp"
 #include "teradata_storage.hpp"
 
 #include "duckdb.hpp"
@@ -20,6 +21,7 @@ void TeradataExtension::Load(DuckDB &db) {
 	// Register Teradata functions
 	TeradataScan::Register(instance);
 	TeradataQueryFunction::Register(instance);
+	TeradataExecuteFunction::Register(instance);
 
 	instance.config.storage_extensions["teradata"] = make_uniq<TeradataStorageExtension>();
 }

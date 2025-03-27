@@ -4,23 +4,28 @@ require teradata
 # e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
 require-env TD_LOGON
 
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
 statement ok
-attach '${TD_LOGON}' as td (TYPE TERADATA);
+attach '${TD_LOGON}' as td (TYPE TERADATA, DATABASE '${TD_DB}');
 
 statement ok
-drop table if exists td.val.t1;
+drop table if exists td.t1;
 
 statement ok
-create table td.val.t1 (a int, b int);
+create table td.t1 (a int, b int);
 
 statement ok
-insert into td.val.t1 values (1, 2), (3, 4);
+insert into td.t1 values (1, 2), (3, 4);
 
 query II rowsort
-select * from td.val.t1;
+select * from td.t1;
 ----
 1	2
 3	4
 
 statement ok
-drop table td.val.t1;
+drop table td.t1;

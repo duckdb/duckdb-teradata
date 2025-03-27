@@ -13,22 +13,8 @@
 namespace duckdb {
 
 static string GetDuckDBToTeradataTypeString(const LogicalType &type) {
-	switch (type.id()) {
-	case LogicalTypeId::TINYINT:
-		return "BYTEINT";
-	case LogicalTypeId::DOUBLE:
-		return "FLOAT";
-	case LogicalTypeId::BLOB:
-		return "VARBYTE";
-	case LogicalTypeId::LIST:
-	case LogicalTypeId::STRUCT:
-	case LogicalTypeId::ENUM:
-	case LogicalTypeId::MAP:
-	case LogicalTypeId::UNION:
-		throw NotImplementedException("Creating teradata tables with complex types is not supported");
-	default:
-		return type.ToString();
-	}
+	// Convert the DuckDB type to a Teradata type, then get the string representation of that type
+	return TeradataType::FromDuckDB(type).ToString();
 }
 
 static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints) {
@@ -163,15 +149,25 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	 */
 
 	// TODO: Sanitize the schema name
+	const auto query = StringUtil::Format("SELECT T.TableName, C.ColumnName, C.ColumnType, C.ColumnLength "
+	                                      "FROM dbc.TablesV AS T JOIN dbc.ColumnsV AS C "
+	                                      "ON T.TableName = C.TableName AND T.DatabaseName = C.DatabaseName "
+	                                      "WHERE T.DatabaseName = '%s' AND T.TableKind = 'T' "
+	                                      "ORDER BY T.TableName, C.ColumnId",
+	                                      td_schema.name);
+
+	/*
 	const auto query = StringUtil::Format("SELECT TableName, ColumnName, ColumnType FROM dbc.ColumnsV "
 	                                      "WHERE DatabaseName = '%s' AND ColumnType IS NOT NULL "
 	                                      "ORDER BY TableName, ColumnId",
 	                                      td_schema.name);
-
+	*/
 	const auto result = conn.Query(query, false);
 
 	CreateTableInfo info;
 	info.schema = td_schema.name;
+
+	bool skip_table = false;
 
 	// Iterate over the chunks in the result
 	for (auto &chunk : result->Chunks()) {
@@ -180,18 +176,21 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 		auto &tbl_name_vec = chunk.data[0];
 		auto &col_name_vec = chunk.data[1];
 		auto &col_type_vec = chunk.data[2];
+		auto &col_size_vec = chunk.data[3];
 
 		for (idx_t row_idx = 0; row_idx < count; row_idx++) {
 			const auto tbl_name = FlatVector::GetData<string_t>(tbl_name_vec)[row_idx];
 			const auto col_name = FlatVector::GetData<string_t>(col_name_vec)[row_idx];
 			const auto col_type = FlatVector::GetData<string_t>(col_type_vec)[row_idx];
+			const auto col_size = FlatVector::GetData<int32_t>(col_size_vec)[row_idx];
 
 			if (tbl_name != info.table) {
 				// We have a new table
-				if (!info.table.empty()) {
+				if (!info.table.empty() && !skip_table) {
 					// Finish the previous table
 					entries[info.table] = make_uniq<TeradataTableEntry>(catalog, td_schema, info);
 				}
+				skip_table = false;
 
 				// Reset the info
 				info = CreateTableInfo();
@@ -200,18 +199,22 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 			}
 
 			// Add the columns
-			LogicalType duck_type = LogicalType::BLOB;
 			try {
-				const TeradataType td_type = TeradataType::FromShortCode(col_type.GetData());
-				duck_type = td_type.ToDuckDB();
+				TeradataType td_type = TeradataType::FromShortCode(col_type.GetData());
+				if (td_type.HasLengthModifier()) {
+					td_type.SetLength(col_size);
+				}
+
+				const auto duck_type = td_type.ToDuckDB();
+				info.columns.AddColumn(ColumnDefinition(col_name.GetString(), duck_type));
 			} catch (...) {
-				// Ignore the column type for now, just make this work
+				// Ignore the column type (and this table) for now, just make this work
+				skip_table = true;
 			}
-			info.columns.AddColumn(ColumnDefinition(col_name.GetString(), duck_type));
 		}
 	}
 
-	if (!info.table.empty()) {
+	if (!info.table.empty() && !skip_table) {
 		// Finish the last table
 		entries[info.table] = make_uniq<TeradataTableEntry>(catalog, td_schema, info);
 	}

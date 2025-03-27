@@ -9,17 +9,17 @@ string TeradataType::ToString() const {
 	case TeradataTypeId::ARRAY:
 		return "ARRAY";
 	case TeradataTypeId::BYTE:
-		return "BYTE";
+		return "BYTE(" + to_string(width) + ")";
 	case TeradataTypeId::VARBYTE:
-		return "VARBYTE";
+		return "VARBYTE(" + to_string(width) + ")";
 	case TeradataTypeId::BLOB:
-		return "BLOB";
+		return "BLOB(" + to_string(width) + ")";
 	case TeradataTypeId::CHAR:
-		return "CHAR";
+		return "CHAR(" + to_string(width) + ")";
 	case TeradataTypeId::VARCHAR:
-		return "VARCHAR";
+		return "VARCHAR(" + to_string(width) + ")";
 	case TeradataTypeId::CLOB:
-		return "CLOB";
+		return "CLOB(" + to_string(width) + ")";
 	case TeradataTypeId::DATE:
 		return "DATE";
 	case TeradataTypeId::TIME:
@@ -141,6 +141,11 @@ LogicalType TeradataType::ToDuckDB() const {
 	case TeradataTypeId::DATE_T:
 	case TeradataTypeId::DATE_A:
 		return LogicalType::DATE;
+	case TeradataTypeId::JSON:
+		return LogicalType::JSON();
+	case TeradataTypeId::INTERVAL_HOUR_TO_SECOND:
+		// Convert to interval
+		return LogicalType::INTERVAL;
 	default:
 		throw NotImplementedException("Unimplemented Teradata type");
 	}
@@ -192,5 +197,82 @@ unordered_map<string, TeradataTypeId> TeradataType::code_map = {
     {"DT", TeradataTypeId::INVALID}, // "DATASET",
     {"??", TeradataTypeId::ST_GEOMETRY},
 };
+
+bool TeradataType::HasLengthModifier() const {
+	switch (id) {
+	case TeradataTypeId::BYTE:
+	case TeradataTypeId::VARBYTE:
+	case TeradataTypeId::BLOB:
+	case TeradataTypeId::CHAR:
+	case TeradataTypeId::VARCHAR:
+	case TeradataTypeId::CLOB:
+		return true;
+	default:
+		return false;
+	}
+}
+
+TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
+	if (type.IsJSONType()) {
+		return TeradataTypeId::JSON;
+	}
+
+	switch (type.id()) {
+	// Boolean (does not exist in Teradata, so map to byteint)
+	case LogicalTypeId::BOOLEAN:
+		return TeradataTypeId::BYTEINT;
+
+	// Integer types
+	case LogicalTypeId::TINYINT:
+		return TeradataTypeId::BYTEINT;
+	case LogicalTypeId::SMALLINT:
+		return TeradataTypeId::SMALLINT;
+	case LogicalTypeId::INTEGER:
+		return TeradataTypeId::INTEGER;
+	case LogicalTypeId::BIGINT:
+		return TeradataTypeId::BIGINT;
+
+	// Floating point types
+	case LogicalTypeId::FLOAT:
+	case LogicalTypeId::DOUBLE: {
+		throw NotImplementedException("Double/float type not supported");
+	}
+
+	// Decimal type
+	case LogicalTypeId::DECIMAL: {
+		throw NotImplementedException("Decimal type not supported");
+	}
+
+	// Time types
+	case LogicalTypeId::TIMESTAMP:
+		return TeradataTypeId::TIMESTAMP;
+	case LogicalTypeId::DATE:
+		return TeradataTypeId::DATE;
+	case LogicalTypeId::TIME:
+		return TeradataTypeId::TIME;
+	case LogicalTypeId::TIME_TZ:
+		return TeradataTypeId::TIME_TZ;
+	case LogicalTypeId::TIMESTAMP_TZ:
+		return TeradataTypeId::TIMESTAMP_TZ;
+
+	// Varchar
+	case LogicalTypeId::VARCHAR: {
+		// Since DuckDB types are variable size, set the length to the maximum
+		TeradataType char_type = TeradataTypeId::VARCHAR;
+		char_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
+		return char_type;
+	}
+
+	// Blob
+	case LogicalTypeId::BLOB: {
+		// Since DuckDB types are variable size, set the length to the maximum
+		TeradataType blob_type = TeradataTypeId::BLOB;
+		blob_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
+		return blob_type;
+	}
+	default:
+		throw NotImplementedException("Cannot convert DuckDB type '%s' to Teradata type", type.ToString());
+	}
+}
 
 } // namespace duckdb

@@ -7,7 +7,7 @@ namespace duckdb {
 
 class TeradataCatalog final : public Catalog {
 public:
-	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string);
+	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &databse_to_load);
 	~TeradataCatalog() override;
 
 public:
