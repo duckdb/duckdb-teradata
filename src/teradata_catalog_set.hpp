@@ -36,6 +36,9 @@ public:
 	// Get entry by name
 	optional_ptr<CatalogEntry> GetEntry(ClientContext &context, const string &name);
 
+	// Reset this set, clearing all cached entries
+	void ClearEntries();
+
 protected:
 	// Needs to be implemented by subclasses: method to load the entries of this set
 	virtual void LoadEntries(ClientContext &context) = 0;

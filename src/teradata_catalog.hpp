@@ -45,6 +45,8 @@ public:
 		return name == "teradata_query" || name == "teradata_scan";
 	}
 
+	void ClearCache();
+
 private:
 	unique_ptr<TeradataConnection> conn;
 	string path;

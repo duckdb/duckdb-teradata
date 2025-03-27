@@ -137,6 +137,7 @@ LogicalType TeradataType::ToDuckDB() const {
 		// TODO: Not correct.
 		return LogicalType::DECIMAL(width, scale);
 	case TeradataTypeId::FLOAT:
+		// Teradata only supports 8-byte floats (REAL and DOUBLE PRECISION and FLOAT are all the same)
 		return LogicalType::DOUBLE;
 	case TeradataTypeId::DATE_T:
 	case TeradataTypeId::DATE_A:
@@ -232,15 +233,14 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 	case LogicalTypeId::BIGINT:
 		return TeradataTypeId::BIGINT;
 
-	// Floating point types
-	case LogicalTypeId::FLOAT:
+	// Only DOUBLEs are supported
 	case LogicalTypeId::DOUBLE: {
-		throw NotImplementedException("Double/float type not supported");
+		return TeradataTypeId::FLOAT;
 	}
 
 	// Decimal type
 	case LogicalTypeId::DECIMAL: {
-		throw NotImplementedException("Decimal type not supported");
+		throw NotImplementedException("Decimal type not yet supported");
 	}
 
 	// Time types

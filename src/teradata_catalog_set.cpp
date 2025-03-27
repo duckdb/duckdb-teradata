@@ -107,4 +107,10 @@ optional_ptr<CatalogEntry> TeradataInSchemaSet::CreateEntry(unique_ptr<CatalogEn
 	return TeradataCatalogSet::CreateEntry(std::move(entry));
 }
 
+void TeradataCatalogSet::ClearEntries() {
+	entry_map.clear();
+	entries.clear();
+	is_loaded = false;
+}
+
 } // namespace duckdb

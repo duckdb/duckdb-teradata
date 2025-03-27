@@ -1,0 +1,26 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+# Cleanup in case test failed
+statement ok
+DROP TABLE IF EXISTS td.varchar_table;
+
+# DuckDB only supports a single VARCHAR type, mapping to VARCHAR(64000) in Teradata
+statement ok
+CREATE TABLE td.varchar_table(v VARCHAR)
+
+statement ok
+DROP TABLE IF EXISTS td.varchar_table;
+
+# TODO: Add more tests here
