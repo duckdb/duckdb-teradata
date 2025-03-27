@@ -3,8 +3,7 @@
 #include "teradata_transaction.hpp"
 
 #include "duckdb/function/function.hpp"
-
-#include <duckdb/main/extension_util.hpp>
+#include "duckdb/main/extension_util.hpp"
 
 namespace duckdb {
 

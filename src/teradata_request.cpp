@@ -384,7 +384,9 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 			td_type.SetScale(scale);
 		} else {
 			const auto length = reader.Read<uint16_t>();
-			td_type.SetLength(length);
+			if (td_type.HasLengthModifier()) {
+				td_type.SetLength(length);
+			}
 		}
 
 		types.push_back(td_type);
@@ -445,6 +447,16 @@ static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool
 		reader.Skip(sizeof(T));
 	} else {
 		FlatVector::GetData<T>(col_vec)[row_idx] = reader.Read<T>();
+	}
+}
+
+// Specialize booleans to read any non-zero value as true
+static void ReadBoolField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
+	if (is_null) {
+		FlatVector::SetNull(col_vec, row_idx, true);
+		reader.Skip(sizeof(bool));
+	} else {
+		FlatVector::GetData<bool>(col_vec)[row_idx] = reader.Read<int8_t>() != 0;
 	}
 }
 
@@ -547,6 +559,9 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> 
 
 				// Convert Type
 				switch (col_vec.GetType().id()) {
+				case LogicalTypeId::BOOLEAN:
+					ReadBoolField(reader, col_vec, row_idx, is_null);
+					break;
 				case LogicalTypeId::TINYINT:
 					ReadField<int8_t>(reader, col_vec, row_idx, is_null);
 					break;

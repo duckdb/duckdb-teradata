@@ -164,7 +164,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	*/
 	const auto result = conn.Query(query, false);
 
-	CreateTableInfo info;
+	TeradataTableInfo info;
 	info.schema = td_schema.name;
 
 	bool skip_table = false;
@@ -193,7 +193,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 				skip_table = false;
 
 				// Reset the info
-				info = CreateTableInfo();
+				info = TeradataTableInfo();
 				info.table = tbl_name.GetString();
 				info.schema = td_schema.name;
 			}
@@ -207,6 +207,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 
 				const auto duck_type = td_type.ToDuckDB();
 				info.columns.AddColumn(ColumnDefinition(col_name.GetString(), duck_type));
+				info.teradata_types.push_back(std::move(td_type));
 			} catch (...) {
 				// Ignore the column type (and this table) for now, just make this work
 				skip_table = true;

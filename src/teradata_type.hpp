@@ -141,6 +141,13 @@ public:
 		return id == TeradataTypeId::DECIMAL;
 	}
 
+	bool operator==(const TeradataType &rhs) const {
+		return id == rhs.id && width == rhs.width && scale == rhs.scale;
+	}
+	bool operator!=(const TeradataType &rhs) const {
+		return !(*this == rhs);
+	}
+
 private:
 	TeradataTypeId id = TeradataTypeId::INVALID;
 	int64_t width = 0;

@@ -75,8 +75,9 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 		result += KeywordHelper::WriteOptionallyQuoted(col.GetName());
 		result += " ";
 
-		// TODO: we need to convert to the Teradata type first
-		result += col.GetType().ToString();
+		// Convert to teradata type first
+		const auto td_type = TeradataType::FromDuckDB(col.GetType());
+		result += td_type.ToString();
 	}
 	result += ") ";
 
