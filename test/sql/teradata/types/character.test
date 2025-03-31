@@ -20,7 +20,16 @@ DROP TABLE IF EXISTS td.varchar_table;
 statement ok
 CREATE TABLE td.varchar_table(v VARCHAR)
 
+# Insert some data
+statement ok
+INSERT INTO td.varchar_table VALUES ('aaa'), ('bbb'), ('ccc');
+
+query I
+SELECT * FROM td.varchar_table ORDER BY v;
+----
+aaa
+bbb
+ccc
+
 statement ok
 DROP TABLE IF EXISTS td.varchar_table;
-
-# TODO: Add more tests here

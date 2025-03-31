@@ -38,7 +38,7 @@ public:
 	void Execute(const string &sql);
 
 	// Execute a parameterized statement, once for each row in the chunk
-	void Execute(const string &sql, DataChunk &chunk);
+	void Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena);
 
 	// Execute a query with a result set, optionally materializing everything
 	unique_ptr<TeradataQueryResult> Query(const string &sql, bool materialize);

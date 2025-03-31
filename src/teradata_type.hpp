@@ -96,6 +96,8 @@ enum class TeradataTypeId : uint8_t {
 
 class TeradataType {
 public:
+	static constexpr auto MAX_TYPE_LENGTH = 64000;
+
 	// NOLINTNEXTLINE: Allow implicit conversion from `TeradataTypeId`
 	TeradataType(TeradataTypeId id) : id(id) {
 	}
@@ -155,8 +157,6 @@ private:
 
 	// From eg. "BF" to TeradataTypeId::BYTE
 	static unordered_map<string, TeradataTypeId> code_map;
-
-	static constexpr auto MAX_TYPE_LENGTH = 64000;
 };
 
 } // namespace duckdb

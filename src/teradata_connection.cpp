@@ -83,15 +83,14 @@ void TeradataConnection::Disconnect() {
 }
 
 void TeradataConnection::Execute(const string &sql) {
-
 	// TODO: Pool request contexts
 	TeradataRequestContext ctx(*this);
 	ctx.Execute(sql);
 }
 
-void TeradataConnection::Execute(const string &sql, DataChunk &chunk) {
+void TeradataConnection::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena) {
 	TeradataRequestContext ctx(*this);
-	ctx.Execute(sql, chunk);
+	ctx.Execute(sql, chunk, arena);
 }
 
 unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize) {
