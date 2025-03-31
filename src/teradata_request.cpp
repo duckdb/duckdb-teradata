@@ -57,26 +57,26 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	const int32_t validity_bytes = (static_cast<int32_t>(col_count) + 7) / 8;
 
 	// Set the length of the rows to the length of the validity bits
-	for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 		length_array[out_idx] = validity_bytes;
 	}
 
 	// Column-wise compute the size of the rows
-	for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
 		auto &format = formats[col_idx];
 		auto &col_type = chunk.data[col_idx].GetType();
 
 		const auto type_length = GetTypeIdSize(col_type.InternalType());
 		const auto type_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
 
-		for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 			const auto row_idx = format.sel->get_index(out_idx);
 
-			if(!format.validity.RowIsValid(row_idx)) {
+			if (!format.validity.RowIsValid(row_idx)) {
 				// Do not add the length of this column if it is null
 
 				// Except in the case it is a varchar, in which case we should write a zero length
-				if(type_varlen) {
+				if (type_varlen) {
 					length_array[out_idx] += sizeof(uint16_t);
 				}
 
@@ -85,7 +85,7 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 
 			auto &row_length = length_array[out_idx];
 
-			if(!type_varlen) {
+			if (!type_varlen) {
 				// Fixed length
 				const auto col_length = type_length;
 				const auto new_length = row_length + col_length;
@@ -114,7 +114,7 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	}
 
 	// Allocate space for the rows
-	for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 
 		const auto row_length = length_array[out_idx];
 		const auto row_record = reinterpret_cast<char *>(arena.AllocateAligned(row_length));
@@ -128,17 +128,17 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 
 	// Now, second pass, actually write the rows
 
-	for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
 		auto &format = formats[col_idx];
 		auto &col_type = chunk.data[col_idx].GetType();
 
 		const auto type_length = GetTypeIdSize(col_type.InternalType());
 		const auto type_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
 
-		for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 			const auto row_idx = format.sel->get_index(out_idx);
 
-			if(!format.validity.RowIsValid(row_idx)) {
+			if (!format.validity.RowIsValid(row_idx)) {
 				// Set the presence bit
 
 				const auto byte_idx = col_idx / 8;
@@ -146,9 +146,8 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 				auto &validity_byte = record_array[out_idx][byte_idx];
 				validity_byte |= 1 << bit_idx;
 
-
 				// Also, if this is a varchar we should write a zero length as well
-				if(type_varlen) {
+				if (type_varlen) {
 					constexpr auto zero_length = 0;
 					memcpy(cursor_array[out_idx], &zero_length, sizeof(uint16_t));
 					cursor_array[out_idx] += sizeof(uint16_t);
