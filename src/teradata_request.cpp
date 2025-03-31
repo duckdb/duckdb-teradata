@@ -49,26 +49,31 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	}
 
 	// Allocate space for the row pointers and lengths
-	const auto records_ptr = reinterpret_cast<char **>(arena.AllocateAligned(row_count * sizeof(char *)));
-	const auto lengths_ptr = reinterpret_cast<int32_t *>(arena.AllocateAligned(row_count * sizeof(int32_t)));
+	const auto record_array = reinterpret_cast<char **>(arena.AllocateAligned(row_count * sizeof(char *)));
+	const auto cursor_array = reinterpret_cast<char **>(arena.AllocateAligned(row_count * sizeof(char *)));
+	const auto length_array = reinterpret_cast<int32_t *>(arena.AllocateAligned(row_count * sizeof(int32_t)));
 
-	// Compute the size of the rows
-	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
-		int32_t row_length = 0;
+	// Zero out the length array
+	memset(length_array, 0, row_count * sizeof(int32_t));
 
-		for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-			auto &format = formats[col_idx];
+	// Column-wise compute the size of the rows
+	for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		auto &format = formats[col_idx];
+		auto &col_type = chunk.data[col_idx].GetType();
 
+		const auto is_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
+
+		for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 			const auto row_idx = format.sel->get_index(out_idx);
-			if (!format.validity.RowIsValid(row_idx)) {
-				// TODO: use presence bits, write null
+
+			if(!format.validity.RowIsValid(row_idx)) {
+				// TODO: Use presence bits, write null
 				continue;
 			}
 
-			auto &col_type = chunk.data[col_idx].GetType();
-			const auto is_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
+			auto &row_length = length_array[out_idx];
 
-			if (!is_varlen) {
+			if(!is_varlen) {
 				// Fixed length
 				const auto col_length = GetTypeIdSize(col_type.InternalType());
 				const auto new_length = row_length + col_length;
@@ -78,7 +83,6 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 				}
 
 				row_length += UnsafeNumericCast<int32_t>(col_length);
-
 			} else {
 				// Variable length
 				const auto str_length = UnifiedVectorFormat::GetData<string_t>(format)[row_idx].GetSize();
@@ -94,32 +98,31 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 
 				row_length += UnsafeNumericCast<int32_t>(sizeof(uint16_t) + str_length);
 			}
+
+			// Allocate space for the row
+			const auto record_alloc = reinterpret_cast<char *>(arena.Allocate(row_length));
+			record_array[out_idx] = record_alloc;
+			cursor_array[out_idx] = record_alloc;
 		}
-
-		// Allocate space for the row
-		const auto row_record = reinterpret_cast<char *>(arena.Allocate(row_length));
-
-		// Set the row pointer & length
-		records_ptr[out_idx] = row_record;
-		lengths_ptr[out_idx] = row_length;
 	}
 
-	// Now actually write the rows
-	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+	// Now, second pass, actually write the rows
 
-		auto row_record = records_ptr[out_idx];
+	for(idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		auto &format = formats[col_idx];
+		auto &col_type = chunk.data[col_idx].GetType();
 
-		for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-			auto &format = formats[col_idx];
+		const auto is_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
 
+		for(idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 			const auto row_idx = format.sel->get_index(out_idx);
-			if (!format.validity.RowIsValid(row_idx)) {
-				// TODO: use presence bits, write null
+
+			if(!format.validity.RowIsValid(row_idx)) {
+				// TODO: Use presence bits, write null
 				continue;
 			}
 
-			auto &col_type = chunk.data[col_idx].GetType();
-			const auto is_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
+			auto &row_record = cursor_array[out_idx];
 
 			if (!is_varlen) {
 				// Fixed length
@@ -150,8 +153,8 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 		}
 	}
 
-	dbc.using_data_ptr_array = reinterpret_cast<char *>(records_ptr);
-	dbc.using_data_len_array = lengths_ptr;
+	dbc.using_data_ptr_array = reinterpret_cast<char *>(record_array);
+	dbc.using_data_len_array = length_array;
 	dbc.using_data_count = chunk.size();
 
 	BeginRequest(sql, 'E');
