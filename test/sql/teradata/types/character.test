@@ -22,7 +22,7 @@ CREATE TABLE td.varchar_table(v VARCHAR)
 
 # Insert some data
 statement ok
-INSERT INTO td.varchar_table VALUES ('aaa'), ('bbb'), ('ccc');
+INSERT INTO td.varchar_table VALUES ('aaa'), ('bbb'), (NULL), ('ccc');
 
 query I
 SELECT * FROM td.varchar_table ORDER BY v;
@@ -30,6 +30,7 @@ SELECT * FROM td.varchar_table ORDER BY v;
 aaa
 bbb
 ccc
+NULL
 
 statement ok
 DROP TABLE IF EXISTS td.varchar_table;
