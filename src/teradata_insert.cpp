@@ -29,9 +29,14 @@ TeradataInsert::TeradataInsert(LogicalOperator &op, TableCatalogEntry &table,
 //----------------------------------------------------------------------------------------------------------------------
 class TeradataInsertGlobalState final : public GlobalSinkState {
 public:
-	TeradataTableEntry *table;
-	idx_t insert_count;
+	TeradataTableEntry *table = nullptr;
+	idx_t insert_count = 0;
 	string insert_sql;
+
+	ArenaAllocator arena;
+
+	explicit TeradataInsertGlobalState(ClientContext &context) : arena(BufferAllocator::Get(context)) {
+	}
 };
 
 static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntry &entry) {
@@ -75,8 +80,9 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 		result += KeywordHelper::WriteOptionallyQuoted(col.GetName());
 		result += " ";
 
-		// TODO: we need to convert to the Teradata type first
-		result += col.GetType().ToString();
+		// Convert to teradata type first
+		const auto td_type = TeradataType::FromDuckDB(col.GetType());
+		result += td_type.ToString();
 	}
 	result += ") ";
 
@@ -113,7 +119,7 @@ unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &co
 	// auto &transaction = TeradataTransaction::Get(context, insert_table->catalog).Cast<TeradataTransaction>();
 	// auto &conn = transaction.GetConnection();
 
-	auto result = make_uniq<TeradataInsertGlobalState>();
+	auto result = make_uniq<TeradataInsertGlobalState>(context);
 	result->table = insert_table;
 	result->insert_count = 0;
 	result->insert_sql = GetInsertSQL(*this, *insert_table);
@@ -131,8 +137,11 @@ SinkResultType TeradataInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 	auto &transaction = TeradataTransaction::Get(context.client, state.table->catalog).Cast<TeradataTransaction>();
 	auto &conn = transaction.GetConnection();
 
+	// Reset the arena before executing the query
+	state.arena.Reset();
+
 	// Execute, passing the data chunk as parameters.
-	conn.Execute(state.insert_sql, chunk);
+	conn.Execute(state.insert_sql, chunk, state.arena);
 	state.insert_count += chunk.size();
 
 	return SinkResultType::NEED_MORE_INPUT;

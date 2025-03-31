@@ -13,7 +13,51 @@
 #include "duckdb/main/extension_util.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
+#include <teradata_clear_cache.hpp>
+#include <duckdb/main/connection_manager.hpp>
+#include <duckdb/planner/extension_callback.hpp>
+
 namespace duckdb {
+
+//----------------------------------------------------------------------------------------------------------------------
+// State
+//----------------------------------------------------------------------------------------------------------------------
+
+class TeradataExtensionState final : public ClientContextState {
+public:
+	bool CanRequestRebind() override {
+		return true;
+	}
+
+	RebindQueryInfo OnPlanningError(ClientContext &context, SQLStatement &statement, ErrorData &error) override {
+		if (error.Type() != ExceptionType::BINDER) {
+			return RebindQueryInfo::DO_NOT_REBIND;
+		}
+
+		const auto &extra_info = error.ExtraInfo();
+		const auto entry = extra_info.find("error_subtype");
+		if (entry == extra_info.end()) {
+			return RebindQueryInfo::DO_NOT_REBIND;
+		}
+		if (entry->second != "COLUMN_NOT_FOUND") {
+			return RebindQueryInfo::DO_NOT_REBIND;
+		}
+
+		// Try to clear caches and rebind
+		TeradataClearCacheFunction::Clear(context);
+		return RebindQueryInfo::ATTEMPT_TO_REBIND;
+	}
+};
+
+class TeradataExtensionCallback final : public ExtensionCallback {
+	void OnConnectionOpened(ClientContext &context) override {
+		context.registered_state->Insert("teradata_extension", make_shared_ptr<TeradataExtensionState>());
+	}
+};
+
+//----------------------------------------------------------------------------------------------------------------------
+// Extension Load
+//----------------------------------------------------------------------------------------------------------------------
 
 void TeradataExtension::Load(DuckDB &db) {
 	auto &instance = *db.instance;
@@ -22,8 +66,18 @@ void TeradataExtension::Load(DuckDB &db) {
 	TeradataScan::Register(instance);
 	TeradataQueryFunction::Register(instance);
 	TeradataExecuteFunction::Register(instance);
+	TeradataClearCacheFunction::Register(instance);
 
+	// Register storage
 	instance.config.storage_extensions["teradata"] = make_uniq<TeradataStorageExtension>();
+
+	// Register callbacks
+	instance.config.extension_callbacks.push_back(make_uniq<TeradataExtensionCallback>());
+
+	// Register states on existing connections
+	for (const auto &con : ConnectionManager::Get(instance).GetConnectionList()) {
+		con->registered_state->Insert("teradata_extension", make_shared_ptr<TeradataExtensionState>());
+	}
 }
 
 std::string TeradataExtension::Name() {

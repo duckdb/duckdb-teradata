@@ -1,0 +1,69 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+# Cleanup in case test failed
+statement ok
+DROP TABLE IF EXISTS td.float_table;
+
+# Teradata only supports a single floating point type. FLOAT, REAL and DOUBLE PRECISION are all aliases of DOUBLE
+statement ok
+CREATE TABLE td.float_table (d DOUBLE);
+
+# Insert some data
+statement ok
+INSERT INTO td.float_table VALUES (1.0), (2.0), (3.0);
+
+# Select data
+query I
+SELECT * FROM td.float_table ORDER BY d;
+----
+1.0
+2.0
+3.0
+
+# Cleanup
+statement ok
+DROP TABLE IF EXISTS td.float_table;
+
+statement ok
+DROP TABLE IF EXISTS td.real_table;
+
+# Lets also check if we can scan a table with aliases of the floating types
+statement ok
+CALL teradata_execute('td', 'CREATE TABLE real_table (f FLOAT, r REAL, dp DOUBLE PRECISION)');
+
+# Clear the cache so that we can detect the new table
+statement ok
+CALL teradata_clear_cache()
+
+# Describe the table. DuckDB should map all these types to DOUBLE
+query II
+SELECT column_name, column_type FROM (DESCRIBE td.real_table);
+----
+f	DOUBLE
+r	DOUBLE
+dp	DOUBLE
+
+# Insert into the table
+statement ok
+INSERT INTO td.real_table VALUES (1.0, 2.0, 3.0);
+
+# Select data
+query III
+SELECT * FROM td.real_table ORDER BY f;
+----
+1.0	2.0	3.0
+
+statement ok
+DROP TABLE td.real_table;

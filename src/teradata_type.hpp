@@ -96,6 +96,8 @@ enum class TeradataTypeId : uint8_t {
 
 class TeradataType {
 public:
+	static constexpr auto MAX_TYPE_LENGTH = 64000;
+
 	// NOLINTNEXTLINE: Allow implicit conversion from `TeradataTypeId`
 	TeradataType(TeradataTypeId id) : id(id) {
 	}
@@ -141,6 +143,13 @@ public:
 		return id == TeradataTypeId::DECIMAL;
 	}
 
+	bool operator==(const TeradataType &rhs) const {
+		return id == rhs.id && width == rhs.width && scale == rhs.scale;
+	}
+	bool operator!=(const TeradataType &rhs) const {
+		return !(*this == rhs);
+	}
+
 private:
 	TeradataTypeId id = TeradataTypeId::INVALID;
 	int64_t width = 0;
@@ -148,8 +157,6 @@ private:
 
 	// From eg. "BF" to TeradataTypeId::BYTE
 	static unordered_map<string, TeradataTypeId> code_map;
-
-	static constexpr auto MAX_TYPE_LENGTH = 64000;
 };
 
 } // namespace duckdb

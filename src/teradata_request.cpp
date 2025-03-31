@@ -31,7 +31,7 @@ void TeradataRequestContext::Execute(const string &sql) {
 	EndRequest();
 }
 
-void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
+void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena) {
 
 	const auto row_count = chunk.size();
 	const auto col_count = chunk.ColumnCount();
@@ -41,48 +41,159 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk) {
 	// Setup unified vector formats for each column
 	vector<UnifiedVectorFormat> formats;
 	formats.resize(chunk.ColumnCount());
+
 	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
 		auto &col_vec = chunk.data[col_idx];
 		auto &format = formats[col_idx];
 		col_vec.ToUnifiedFormat(row_count, format);
 	}
 
-	// Encode the rows
-	vector<char> buffer;
-	vector<int32_t> lengths;
-	vector<int32_t> offsets;
+	// Allocate space for the row pointers and lengths
+	const auto record_array = reinterpret_cast<char **>(arena.AllocateAligned(row_count * sizeof(char *)));
+	const auto cursor_array = reinterpret_cast<char **>(arena.AllocateAligned(row_count * sizeof(char *)));
+	const auto length_array = reinterpret_cast<int32_t *>(arena.AllocateAligned(row_count * sizeof(int32_t)));
 
+	// How many bytes are needed for the validity (presence) bits?
+	const int32_t validity_bytes = (static_cast<int32_t>(col_count) + 7) / 8;
+
+	// Set the length of the rows to the length of the validity bits
 	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
-		lengths.push_back(0);
-		offsets.push_back(buffer.size());
-		for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-			auto &format = formats[col_idx];
+		length_array[out_idx] = validity_bytes;
+	}
 
+	// Column-wise compute the size of the rows
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		auto &format = formats[col_idx];
+		auto &col_type = chunk.data[col_idx].GetType();
+
+		const auto type_length = GetTypeIdSize(col_type.InternalType());
+		const auto type_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
+
+		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 			const auto row_idx = format.sel->get_index(out_idx);
+
 			if (!format.validity.RowIsValid(row_idx)) {
-				// TODO: Use presence bits to encode null columns
-				// TODO: write null or something...
+				// Do not add the length of this column if it is null
+
+				// Except in the case it is a varchar, in which case we should write a zero length
+				if (type_varlen) {
+					length_array[out_idx] += sizeof(uint16_t);
+				}
+
 				continue;
 			}
 
-			// Encode into the buffer
-			auto data = format.data;
-			auto len = GetTypeIdSize(chunk.data[col_idx].GetType().InternalType());
-			auto ptr = data + len * row_idx;
+			auto &row_length = length_array[out_idx];
 
-			buffer.insert(buffer.end(), ptr, ptr + len);
-			lengths.back() += len;
+			if (!type_varlen) {
+				// Fixed length
+				const auto col_length = type_length;
+				const auto new_length = row_length + col_length;
+
+				if (new_length > NumericLimits<int32_t>::Maximum()) {
+					throw InvalidInputException("Row too long for Teradata");
+				}
+
+				row_length += UnsafeNumericCast<int32_t>(col_length);
+			} else {
+				// Variable length
+				const auto str_length = UnifiedVectorFormat::GetData<string_t>(format)[row_idx].GetSize();
+				if (str_length > TeradataType::MAX_TYPE_LENGTH) {
+					throw InvalidInputException("String too long for Teradata: %d", str_length);
+				}
+
+				// Add the length of the string + the length of the length prefix
+				const auto new_length = row_length + sizeof(uint16_t) + str_length;
+				if (new_length > NumericLimits<int32_t>::Maximum()) {
+					throw InvalidInputException("Row too long for Teradata");
+				}
+
+				row_length += UnsafeNumericCast<int32_t>(sizeof(uint16_t) + str_length);
+			}
 		}
 	}
 
-	vector<char *> buffer_ptrs;
-	for (auto offset : offsets) {
-		buffer_ptrs.push_back(buffer.data() + offset);
+	// Allocate space for the rows
+	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+
+		const auto row_length = length_array[out_idx];
+		const auto row_record = reinterpret_cast<char *>(arena.AllocateAligned(row_length));
+
+		record_array[out_idx] = row_record;
+		cursor_array[out_idx] = row_record + validity_bytes;
+
+		// Set the presence bits to 0
+		memset(row_record, 0, validity_bytes);
 	}
 
-	dbc.using_data_ptr_array = reinterpret_cast<char *>(buffer_ptrs.data());
-	dbc.using_data_len_array = lengths.data();
-	dbc.using_data_count = chunk.size();
+	// Now, second pass, actually write the rows
+
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		auto &format = formats[col_idx];
+		auto &col_type = chunk.data[col_idx].GetType();
+
+		const auto type_length = GetTypeIdSize(col_type.InternalType());
+		const auto type_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
+
+		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
+			const auto row_idx = format.sel->get_index(out_idx);
+
+			if (!format.validity.RowIsValid(row_idx)) {
+				// Set the presence bit
+
+				const auto byte_idx = col_idx / 8;
+				const auto bit_idx = (7 - (col_idx % 8));
+				auto &validity_byte = record_array[out_idx][byte_idx];
+				validity_byte |= 1 << bit_idx;
+
+				// Also, if this is a varchar we should write a zero length as well
+				if (type_varlen) {
+					constexpr auto zero_length = 0;
+					memcpy(cursor_array[out_idx], &zero_length, sizeof(uint16_t));
+					cursor_array[out_idx] += sizeof(uint16_t);
+				}
+
+				continue;
+			}
+
+			auto &row_record = cursor_array[out_idx];
+
+			if (!type_varlen) {
+				// Fixed length
+				const auto col_data = format.data;
+				const auto col_size = type_length;
+				memcpy(row_record, col_data + col_size * row_idx, col_size);
+
+				// Increment pointer
+				row_record += col_size;
+
+			} else {
+				// Variable length
+				const auto &string_data = UnifiedVectorFormat::GetData<string_t>(format)[row_idx];
+				const auto string_size = string_data.GetSize();
+
+				// Copy length
+				memcpy(row_record, &string_size, sizeof(uint16_t));
+
+				// Increment pointer
+				row_record += sizeof(uint16_t);
+
+				// Copy data
+				memcpy(row_record, string_data.GetDataUnsafe(), string_size);
+
+				// Increment pointer
+				row_record += string_size;
+			}
+		}
+	}
+
+	dbc.using_data_ptr_array = reinterpret_cast<char *>(record_array);
+	dbc.using_data_len_array = length_array;
+	dbc.using_data_count = row_count;
+
+	dbc.use_presence_bits = 'Y';
+	dbc.var_len_req = 'N';
+	dbc.change_opts = 'Y';
 
 	BeginRequest(sql, 'E');
 
@@ -132,6 +243,18 @@ static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
 		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 954:
 		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_OUT};
+
+	// LONGVARCHAR
+	case 456:
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD};
+	case 457:
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::NULLABLE};
+	case 956:
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_IN};
+	case 957:
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT};
+	case 958:
+		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 472:
 		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::STANDARD};
@@ -384,7 +507,9 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 			td_type.SetScale(scale);
 		} else {
 			const auto length = reader.Read<uint16_t>();
-			td_type.SetLength(length);
+			if (td_type.HasLengthModifier()) {
+				td_type.SetLength(length);
+			}
 		}
 
 		types.push_back(td_type);
@@ -445,6 +570,16 @@ static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool
 		reader.Skip(sizeof(T));
 	} else {
 		FlatVector::GetData<T>(col_vec)[row_idx] = reader.Read<T>();
+	}
+}
+
+// Specialize booleans to read any non-zero value as true
+static void ReadBoolField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
+	if (is_null) {
+		FlatVector::SetNull(col_vec, row_idx, true);
+		reader.Skip(sizeof(bool));
+	} else {
+		FlatVector::GetData<bool>(col_vec)[row_idx] = reader.Read<int8_t>() != 0;
 	}
 }
 
@@ -547,6 +682,9 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> 
 
 				// Convert Type
 				switch (col_vec.GetType().id()) {
+				case LogicalTypeId::BOOLEAN:
+					ReadBoolField(reader, col_vec, row_idx, is_null);
+					break;
 				case LogicalTypeId::TINYINT:
 					ReadField<int8_t>(reader, col_vec, row_idx, is_null);
 					break;

@@ -10,6 +10,16 @@ namespace duckdb {
 
 TeradataTableEntry::TeradataTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info)
     : TableCatalogEntry(catalog, schema, info) {
+
+	for (auto &col : columns.Logical()) {
+		// Use the default mapping from DuckDB to Teradata types if were creating a table from within duckdb
+		teradata_types.push_back(TeradataType::FromDuckDB(col.GetType()));
+	}
+}
+
+TeradataTableEntry::TeradataTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, TeradataTableInfo &info)
+    : TableCatalogEntry(catalog, schema, info), teradata_types(std::move(info.teradata_types)) {
+	D_ASSERT(teradata_types.size() == columns.LogicalColumnCount());
 }
 
 unique_ptr<BaseStatistics> TeradataTableEntry::GetStatistics(ClientContext &context, column_t column_id) {
@@ -35,6 +45,7 @@ TableFunction TeradataTableEntry::GetScanFunction(ClientContext &context, unique
 
 	result->is_read_only = transaction.IsReadOnly();
 	result->is_materialized = false;
+	result->td_types = teradata_types;
 
 	// Set the bind data
 	bind_data = std::move(result);

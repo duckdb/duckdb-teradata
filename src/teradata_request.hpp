@@ -18,7 +18,7 @@ public:
 	void Execute(const string &sql);
 
 	// Execute a paramterized statment, once for each row in the chunk
-	void Execute(const string &sql, DataChunk &chunk);
+	void Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena);
 
 	// Prepare a statement, returning the types of the result set
 	void Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names);

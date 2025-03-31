@@ -30,7 +30,8 @@ set(EXTENSION_SOURCES
     src/teradata_table_set.cpp
     src/teradata_table_entry.cpp
     src/teradata_type.cpp
-    src/teradata_execute.cpp)
+    src/teradata_execute.cpp
+    src/teradata_clear_cache.cpp)
 
 # Teradata on macos
 if(APPLE)

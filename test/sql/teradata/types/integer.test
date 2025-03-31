@@ -1,0 +1,67 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+# Cleanup in case test failed
+statement ok
+DROP TABLE IF EXISTS td.integer_table;
+
+# These types are supported
+# BOOLEAN, TINYINT, SMALLINT, INTEGER, BIGINT
+statement ok
+CREATE TABLE td.integer_table(b BOOLEAN, i8 TINYINT, i16 SMALLINT, i32 INTEGER, i64 BIGINT)
+
+# Insert into integer table
+statement ok
+INSERT INTO td.integer_table VALUES (true, 1, 2, 3, 4);
+
+# Select from integer table
+query IIIII
+SELECT * FROM td.integer_table;
+----
+true	1	2	3	4
+
+statement ok
+DROP TABLE IF EXISTS td.integer_table;
+
+# Unsigned types and hugeints are not supported
+# UTINYINT, USMALLINT, UINTEGER, UBIGINT, HUGEINT, UHUGEINT
+statement error
+CREATE TABLE td.unsupported_type(u8 UTINYINT);
+----
+Not implemented Error: Cannot convert DuckDB type 'UTINYINT' to Teradata type
+
+statement error
+CREATE TABLE td.unsupported_type(u16 USMALLINT);
+----
+Not implemented Error: Cannot convert DuckDB type 'USMALLINT' to Teradata type
+
+statement error
+CREATE TABLE td.unsupported_type(u32 UINTEGER);
+----
+Not implemented Error: Cannot convert DuckDB type 'UINTEGER' to Teradata type
+
+statement error
+CREATE TABLE td.unsupported_type(u64 UBIGINT);
+----
+Not implemented Error: Cannot convert DuckDB type 'UBIGINT' to Teradata type
+
+statement error
+CREATE TABLE td.unsupported_type(i128 HUGEINT);
+----
+Not implemented Error: Cannot convert DuckDB type 'HUGEINT' to Teradata type
+
+statement error
+CREATE TABLE td.unsupported_type(u128 UHUGEINT);
+----
+Not implemented Error: Cannot convert DuckDB type 'UHUGEINT' to Teradata type

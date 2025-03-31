@@ -103,11 +103,10 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 
 	// Check that the types are still the same, in case we need to rebind
 	auto &td_types = result->td_query->GetTypes();
-	auto &duck_types = data.types;
 
 	for (idx_t i = 0; i < td_types.size(); i++) {
-		// TODO: Only look at TD id, but also check e.g. decimal precision
-		if (duck_types[i] != td_types[i].ToDuckDB()) {
+		// Compare the types of the query with the types we got during binding
+		if (td_types[i] != data.td_types[i]) {
 			throw InvalidInputException(
 			    "Teradata query schema has changed since bind, please re-execute or re-prepare the query");
 		}

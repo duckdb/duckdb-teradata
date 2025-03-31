@@ -64,6 +64,10 @@ void TeradataCatalog::DropSchema(ClientContext &context, DropInfo &info) {
 	throw NotImplementedException("TeradataCatalog::DropSchema");
 }
 
+void TeradataCatalog::ClearCache() {
+	schemas.ClearEntries();
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // Table Management
 //----------------------------------------------------------------------------------------------------------------------

@@ -32,7 +32,13 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 		}
 	}
 
-	return make_uniq_base<Catalog, TeradataCatalog>(db, connection_string, database);
+	// Create the catalog and connect to the teradata system
+	auto result = make_uniq<TeradataCatalog>(db, connection_string, database);
+
+	// Set the database path
+	result->GetConnection().Execute("DATABASE " + KeywordHelper::WriteOptionallyQuoted(database) + ";");
+
+	return std::move(result);
 }
 
 static unique_ptr<TransactionManager> TeradataCreateTransactionManager(StorageExtensionInfo *storage_info,
