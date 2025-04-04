@@ -11,6 +11,8 @@
 #include "duckdb/planner/operator/logical_insert.hpp"
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 
+#include <duckdb/planner/operator/logical_create_table.hpp>
+
 namespace duckdb {
 
 //======================================================================================================================
@@ -22,6 +24,12 @@ TeradataInsert::TeradataInsert(LogicalOperator &op, TableCatalogEntry &table,
                                physical_index_vector_t<idx_t> column_index_map_p)
     : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(&table), schema(nullptr),
       column_index_map(std::move(column_index_map_p)) {
+}
+
+// CREATE TABLE AS
+TeradataInsert::TeradataInsert(LogicalOperator &op, SchemaCatalogEntry &schema, unique_ptr<BoundCreateTableInfo> info)
+    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(nullptr), schema(&schema),
+      info(std::move(info)) {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -107,12 +115,17 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 }
 
 unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &context) const {
+	TeradataTableEntry *insert_table;
 
+	// If no table supplied, this is a CTAS
 	if (!table) {
-		throw NotImplementedException("Teradata CTAS");
+		// Create a new table!
+		auto &schema_ref = *schema.get_mutable();
+		const auto transaction = schema_ref.GetCatalogTransaction(context);
+		insert_table = &schema_ref.CreateTable(transaction, *info)->Cast<TeradataTableEntry>();
+	} else {
+		insert_table = &table.get_mutable()->Cast<TeradataTableEntry>();
 	}
-
-	TeradataTableEntry *insert_table = &table.get_mutable()->Cast<TeradataTableEntry>();
 
 	// Prepare just to see that we type check
 	// TODO: We should type check the statement somehow...
@@ -215,9 +228,23 @@ unique_ptr<PhysicalOperator> TeradataCatalog::PlanInsert(ClientContext &context,
 
 	MaterializeTeradataScans(*plan);
 
+	// TODO: This is where we would cast to TD types if needed
 	// plan = AddCastToTeradataTypes(context, std::move(plan));
 
 	auto insert = make_uniq<TeradataInsert>(op, op.table, op.column_index_map);
+	insert->children.push_back(std::move(plan));
+	return std::move(insert);
+}
+
+unique_ptr<PhysicalOperator> TeradataCatalog::PlanCreateTableAs(ClientContext &context, LogicalCreateTable &op,
+                                                                unique_ptr<PhysicalOperator> plan) {
+
+	// TODO: This is where we would cast to TD types if needed
+	// plan = AddCastToTeradataTypes(context, std::move(plan));
+
+	MaterializeTeradataScans(*plan);
+
+	auto insert = make_uniq<TeradataInsert>(op, op.schema, std::move(op.info));
 	insert->children.push_back(std::move(plan));
 	return std::move(insert);
 }

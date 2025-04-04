@@ -9,6 +9,8 @@ class TeradataInsert final : public PhysicalOperator {
 public:
 	//! INSERT INTO
 	TeradataInsert(LogicalOperator &op, TableCatalogEntry &table, physical_index_vector_t<idx_t> column_index_map);
+	//! CREATE TABLE AS
+	TeradataInsert(LogicalOperator &op, SchemaCatalogEntry &schema, unique_ptr<BoundCreateTableInfo> info);
 
 	//! The table to insert into
 	optional_ptr<TableCatalogEntry> table;
