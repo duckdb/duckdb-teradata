@@ -266,7 +266,7 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 	// Blob
 	case LogicalTypeId::BLOB: {
 		// Since DuckDB types are variable size, set the length to the maximum
-		TeradataType blob_type = TeradataTypeId::BLOB;
+		TeradataType blob_type = TeradataTypeId::VARBYTE;
 		blob_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
 		return blob_type;
 	}

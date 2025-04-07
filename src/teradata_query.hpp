@@ -5,6 +5,7 @@
 namespace duckdb {
 
 class DatabaseInstance;
+class TeradataTableEntry;
 
 class TeradataBindData final : public TableFunctionData {
 public:
@@ -25,9 +26,16 @@ public:
 	optional_ptr<TeradataCatalog> GetCatalog() const {
 		return catalog;
 	}
+	void SetTable(TeradataTableEntry &table) {
+		this->table = &table;
+	}
+	optional_ptr<TeradataTableEntry> GetTable() const {
+		return table;
+	}
 
 private:
 	optional_ptr<TeradataCatalog> catalog;
+	optional_ptr<TeradataTableEntry> table;
 };
 
 struct TeradataQueryFunction {

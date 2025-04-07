@@ -36,6 +36,7 @@ TableFunction TeradataTableEntry::GetScanFunction(ClientContext &context, unique
 	result->schema_name = schema.name;
 	result->table_name = name;
 	result->SetCatalog(td_catalog);
+	result->SetTable(*this);
 
 	for (idx_t col_idx = 0; col_idx < columns.LogicalColumnCount(); col_idx++) {
 		auto &col = columns.GetColumnMutable(LogicalIndex(col_idx));

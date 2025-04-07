@@ -1,0 +1,36 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+# Cleanup in case test failed
+statement ok
+DROP TABLE IF EXISTS td.blob_table;
+
+# DuckDB only supports a single BLOB type, mapping to VARBYTE(64000) in Teradata
+statement ok
+CREATE TABLE td.blob_table(b BLOB)
+
+# Insert some data
+statement ok
+INSERT INTO td.blob_table VALUES ('aaa'::BLOB), ('bbb'::BLOB), (NULL), ('ccc'::BLOB);
+
+query I
+SELECT * FROM td.blob_table ORDER BY b;
+----
+aaa
+bbb
+ccc
+NULL
+
+statement ok
+DROP TABLE IF EXISTS td.blob_table;

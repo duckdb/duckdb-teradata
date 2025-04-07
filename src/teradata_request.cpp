@@ -333,16 +333,17 @@ static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
 	case 1194:
 		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_OUT};
 
+	// Just treat these as varchar with the max length
 	case 697:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::STANDARD};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD};
 	case 698:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::NULLABLE};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE};
 	case 1197:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_IN};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN};
 	case 1198:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1199:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 748:
 		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::STANDARD};

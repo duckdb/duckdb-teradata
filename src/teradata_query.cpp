@@ -5,8 +5,11 @@
 #include "teradata_query.hpp"
 #include "teradata_catalog.hpp"
 #include "teradata_transaction.hpp"
+#include "teradata_table_entry.hpp"
 
 #include "duckdb/main/extension_util.hpp"
+
+#include <teradata_filter.hpp>
 
 namespace duckdb {
 
@@ -76,6 +79,16 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+// Bind Info
+//----------------------------------------------------------------------------------------------------------------------
+static BindInfo TeradataQueryBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+	auto &bind_data = bind_data_p->Cast<TeradataBindData>();
+	BindInfo info(ScanType::EXTERNAL);
+	info.table = bind_data.GetTable().get();
+	return info;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 // Init
 //----------------------------------------------------------------------------------------------------------------------
 struct TeradataQueryState final : GlobalTableFunctionState {
@@ -94,6 +107,14 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 
 		// If we get here, we have a table name, so we need to construct a SQL string
 		sql = StringUtil::Format("SELECT * FROM %s.%s", data.schema_name, data.table_name);
+	}
+
+	// Also add simple filters if we got them
+	if (input.filters) {
+		const auto where_clause = TeradataFilter::Transform(input.column_ids, *input.filters, data.names);
+		if (!where_clause.empty()) {
+			sql += " WHERE " + where_clause;
+		}
 	}
 
 	auto result = make_uniq<TeradataQueryState>();
@@ -136,6 +157,10 @@ TableFunction TeradataQueryFunction::GetFunction() {
 	function.bind = TeradataQueryBind;
 	function.init_global = TeradataQueryInit;
 	function.function = TeradataQueryExec;
+	function.get_bind_info = TeradataQueryBindInfo;
+	function.projection_pushdown = false;
+	function.filter_pushdown = true;
+
 	return function;
 }
 
