@@ -422,7 +422,7 @@ static bool TryParseTypeModsFromFormat(const char *ptr, int16_t len, int64_t &pr
 }
 
 void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
-	BeginRequest(sql, 'S');
+	BeginRequest(sql, 'P');
 
 	// Fetch and match the second parcel
 	MatchParcel(PclPREPINFO);
@@ -434,31 +434,38 @@ void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &ty
 	for (int16_t col_idx = 0; col_idx < prep_info.ColumnCount; col_idx++) {
 		const auto col_info = reader.Read<CliPrepColInfoType>();
 
+		auto col_type = GetTeradataTypeFromParcel(col_info.DataType);
+		auto &td_type = col_type.type;
+
+		// Try to get the type mods from the format
+		if (td_type.HasLengthModifier()) {
+			td_type.SetLength(col_info.DataLen);
+		} else if (td_type.IsDecimal()) {
+			// First byte is intergral digits
+			// Second byte is fractional digits
+			uint8_t precision = 0;
+			uint8_t scale = 0;
+			memcpy(&precision, &col_info.DataLen, sizeof(uint8_t));
+			memcpy(&scale, &col_info.DataLen + sizeof(uint8_t), sizeof(uint8_t));
+
+			td_type.SetPrecision(precision);
+			td_type.SetScale(scale);
+		}
+
 		const auto name_len = reader.Read<int16_t>();
 		const auto name_str = reader.ReadBytes(name_len);
 
 		names.emplace_back(name_str, name_len);
 
+		// TODO: Do something with the format?
 		const auto format_len = reader.Read<int16_t>();
-		const auto format_str = reader.ReadBytes(format_len);
+		// const auto format_str = reader.ReadBytes(format_len);
+		reader.Skip(format_len);
 
 		// TODO: Do something with the title?
 		const auto title_len = reader.Read<int16_t>();
 		// const auto title_str = reader.ReadBytes(title_len);
 		reader.Skip(title_len);
-
-		// Get the type from the parcel
-		auto col_type = GetTeradataTypeFromParcel(col_info.DataType);
-		auto &td_type = col_type.type;
-
-		// Try to get the type mods from the format
-		int64_t precision = 0;
-		int64_t scale = 0;
-
-		if (TryParseTypeModsFromFormat(format_str, format_len, precision, scale)) {
-			td_type.SetPrecision(precision);
-			td_type.SetScale(scale);
-		}
 
 		types.push_back(td_type);
 	}

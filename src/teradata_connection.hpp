@@ -43,6 +43,9 @@ public:
 	// Execute a query with a result set, optionally materializing everything
 	unique_ptr<TeradataQueryResult> Query(const string &sql, bool materialize);
 
+	// Prepare a query
+	void Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names);
+
 private:
 	string logon_string;
 	Int32 session_id = 0;

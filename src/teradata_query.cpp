@@ -48,18 +48,14 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 		StringUtil::RTrim(sql);
 	}
 
-	const auto &con = transaction.GetConnection();
+	auto &con = transaction.GetConnection();
 
 	vector<TeradataType> td_types;
-	// Send a "prepare" request to Teradata to get the column names and types
-	{
-		TeradataRequestContext td_ctx(con);
-		td_ctx.Prepare(sql, td_types, names);
+	con.Prepare(sql, td_types, names);
 
-		// Convert to DuckDB types
-		for (auto &td_type : td_types) {
-			return_types.push_back(td_type.ToDuckDB());
-		}
+	// Convert to DuckDB types
+	for (auto &td_type : td_types) {
+		return_types.push_back(td_type.ToDuckDB());
 	}
 
 	if (td_types.empty()) {

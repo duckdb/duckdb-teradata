@@ -111,4 +111,10 @@ unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, boo
 	}
 }
 
+void TeradataConnection::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
+	// TODO: Pool request contexts
+	TeradataRequestContext td_ctx(*this);
+	td_ctx.Prepare(sql, types, names);
+}
+
 } // namespace duckdb
