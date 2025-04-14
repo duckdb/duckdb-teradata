@@ -69,7 +69,7 @@ string TeradataType::ToString() const {
 	case TeradataTypeId::BIGINT:
 		return "BIGINT";
 	case TeradataTypeId::DECIMAL:
-		return "DECIMAL";
+		return "DECIMAL(" + to_string(width) + ", " + to_string(scale) + ")";
 	case TeradataTypeId::FLOAT:
 		return "FLOAT";
 	case TeradataTypeId::NUMBER:
@@ -240,7 +240,10 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 
 	// Decimal type
 	case LogicalTypeId::DECIMAL: {
-		throw NotImplementedException("Decimal type not yet supported");
+		TeradataType decimal_type = TeradataTypeId::DECIMAL;
+		decimal_type.SetWidth(DecimalType::GetWidth(type));
+		decimal_type.SetScale(DecimalType::GetScale(type));
+		return decimal_type;
 	}
 
 	// Time types
