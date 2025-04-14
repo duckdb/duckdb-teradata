@@ -8,6 +8,7 @@
 namespace duckdb {
 
 class TeradataConnection;
+class TeradataColumnReader;
 
 class TeradataRequestContext {
 public:
@@ -27,7 +28,7 @@ public:
 	void Query(const string &sql, vector<TeradataType> &types);
 
 	// Fetch the next data chunk after calling Query. Returns true if there is more data to fetch
-	bool Fetch(DataChunk &chunk, const vector<TeradataType> &types);
+	bool Fetch(DataChunk &chunk, const vector<unique_ptr<TeradataColumnReader>> &readers);
 
 	// Fetch all data after calling Query, into a ColumnDataCollection.
 	unique_ptr<ColumnDataCollection> FetchAll(const vector<TeradataType> &types);

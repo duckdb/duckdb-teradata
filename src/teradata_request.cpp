@@ -739,157 +739,7 @@ uint16_t TeradataRequestContext::FetchParcel() {
 	return dbc.fet_parcel_flavor;
 }
 
-template <class T>
-static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
-	if (is_null) {
-		FlatVector::SetNull(col_vec, row_idx, true);
-		reader.Skip(sizeof(T));
-	} else {
-		FlatVector::GetData<T>(col_vec)[row_idx] = reader.Read<T>();
-	}
-}
-
-// Specialize booleans to read any non-zero value as true
-static void ReadBoolField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
-	if (is_null) {
-		FlatVector::SetNull(col_vec, row_idx, true);
-		reader.Skip(sizeof(bool));
-	} else {
-		FlatVector::GetData<bool>(col_vec)[row_idx] = reader.Read<int8_t>() != 0;
-	}
-}
-
-static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null,
-                          const TeradataType &td_type) {
-	switch (td_type.GetId()) {
-	case TeradataTypeId::VARBYTE: {
-		const auto length = reader.Read<uint16_t>();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-		} else {
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(length);
-			data_ptr[row_idx] = StringVector::AddStringOrBlob(col_vec, text_ptr, length);
-		}
-	} break;
-	case TeradataTypeId::BYTE: {
-		const auto max_length = td_type.GetLength();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-			reader.Skip(max_length);
-		} else {
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(max_length);
-			data_ptr[row_idx] = StringVector::AddStringOrBlob(col_vec, text_ptr, max_length);
-		}
-	} break;
-	default:
-		throw NotImplementedException("Unsupported Binary Type: '%s'", td_type.ToString());
-	}
-}
-
-static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null,
-                             const TeradataType &td_type) {
-
-	// The logic differs slightly depending on what type of varchar we are dealing with
-	switch (td_type.GetId()) {
-	case TeradataTypeId::VARCHAR: {
-		const auto length = reader.Read<uint16_t>();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-		} else {
-			// TODO: This is not enough, we need to handle shift-out characters
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(length);
-			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, length);
-		}
-	} break;
-	case TeradataTypeId::CHAR: {
-		const auto max_length = td_type.GetLength();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-			reader.Skip(max_length);
-		} else {
-			// For CHAR, the max length is the length of the field
-			// TODO: This is not enough, we need to handle shift-out characters
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(max_length);
-			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, max_length);
-		}
-	} break;
-	default:
-		throw NotImplementedException("Unsupported String Type: '%s'", td_type.ToString());
-	}
-}
-
-static void ReadDecimalField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null,
-                             const TeradataType &td_type) {
-	const auto digits = td_type.GetWidth();
-	auto byte_width = 0;
-	if (digits > 1 && digits < 3) {
-		byte_width = 1;
-	} else if (digits > 2 && digits < 5) {
-		byte_width = 2;
-	} else if (digits > 4 && digits < 10) {
-		byte_width = 4;
-	} else if (digits > 9 && digits < 19) {
-		byte_width = 8;
-	} else if (digits > 18 && digits < 29) {
-		byte_width = 16;
-	}
-
-	if (is_null) {
-		reader.Skip(byte_width);
-		FlatVector::SetNull(col_vec, row_idx, true);
-		return;
-	}
-
-	// Else, read the value
-	switch (byte_width) {
-	case 1: {
-		// DuckDB doesnt support single byte decimals, so convert to int16_t here
-		const int16_t value = reader.Read<int8_t>();
-		FlatVector::GetData<int16_t>(col_vec)[row_idx] = value;
-	} break;
-	case 2: {
-		const auto value = reader.Read<int16_t>();
-		FlatVector::GetData<int16_t>(col_vec)[row_idx] = value;
-	} break;
-	case 4: {
-		const auto value = reader.Read<int32_t>();
-		FlatVector::GetData<int32_t>(col_vec)[row_idx] = value;
-	} break;
-	case 8: {
-		const auto value = reader.Read<int64_t>();
-		FlatVector::GetData<int64_t>(col_vec)[row_idx] = value;
-	} break;
-	case 16: {
-		const auto value = reader.Read<hugeint_t>();
-		FlatVector::GetData<hugeint_t>(col_vec)[row_idx] = value;
-	} break;
-	default:
-		break;
-	}
-}
-
-static void ReadDateField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
-	if (is_null) {
-		FlatVector::SetNull(col_vec, row_idx, true);
-		reader.Skip(sizeof(int32_t));
-	} else {
-		// Teradata stores dates in the following format
-		// (YEAR - 1900) * 10000 + (MONTH * 100) + DAY
-		const auto td_date = reader.Read<int32_t>();
-
-		const auto years = td_date / 10000 + 1900;
-		const auto months = (td_date % 10000) / 100;
-		const auto days = td_date % 100;
-
-		FlatVector::GetData<date_t>(col_vec)[row_idx] = Date::FromDate(years, months, days);
-	}
-}
-
-bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> &types) {
+bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<unique_ptr<TeradataColumnReader>> &readers) {
 	if (!is_open) {
 		chunk.SetCardinality(0);
 		return false;
@@ -922,44 +772,7 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> 
 
 				auto &col_vec = chunk.data[col_idx];
 
-				// Convert Type
-				switch (col_vec.GetType().id()) {
-				case LogicalTypeId::BOOLEAN:
-					ReadBoolField(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::TINYINT:
-					ReadField<int8_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::UTINYINT:
-					ReadField<uint8_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::SMALLINT:
-					ReadField<int16_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::INTEGER:
-					ReadField<int32_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::BIGINT:
-					ReadField<int64_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::DOUBLE:
-					ReadField<double>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::BLOB:
-					ReadBlobField(reader, col_vec, row_idx, is_null, types[col_idx]);
-					break;
-				case LogicalTypeId::VARCHAR:
-					ReadVarcharField(reader, col_vec, row_idx, is_null, types[col_idx]);
-					break;
-				case LogicalTypeId::DECIMAL:
-					ReadDecimalField(reader, col_vec, row_idx, is_null, types[col_idx]);
-					break;
-				case LogicalTypeId::DATE:
-					ReadDateField(reader, col_vec, row_idx, is_null);
-					break;
-				default:
-					throw NotImplementedException("Unsupported Teradata Type: '%s'", col_vec.GetType().ToString());
-				}
+				readers[col_idx]->Decode(reader, col_vec, row_idx, is_null);
 			}
 
 			// Increment row id
@@ -1004,8 +817,14 @@ unique_ptr<ColumnDataCollection> TeradataRequestContext::FetchAll(const vector<T
 	DataChunk chunk;
 	chunk.Initialize(Allocator::DefaultAllocator(), duck_types);
 
+	// Initialize readers
+	vector<unique_ptr<TeradataColumnReader>> readers;
+	for (const auto &td_type : types) {
+		readers.push_back(TeradataColumnReader::Make(td_type));
+	}
+
 	// Fetch chunk by chunk and append to the CDC
-	while (Fetch(chunk, types)) {
+	while (Fetch(chunk, readers)) {
 		result->Append(append_state, chunk);
 		chunk.Reset();
 	}
