@@ -88,8 +88,6 @@ enum class TeradataTypeId : uint8_t {
 	XML,
 
 	// Extra, only used when binding
-	DATE_T,
-	DATE_A,
 	LONGVARBYTE,
 	LONGVARGRAPHIC,
 };

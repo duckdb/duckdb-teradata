@@ -85,7 +85,7 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 		}
 
 		auto &col = columns.GetColumn(column_indices[i]);
-		result += KeywordHelper::WriteOptionallyQuoted(col.GetName());
+		result += KeywordHelper::WriteQuoted(col.GetName(), '"');
 		result += " ";
 
 		// Convert to teradata type first
@@ -97,9 +97,9 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 	result += "INSERT INTO ";
 
 	if (!entry.schema.name.empty()) {
-		result += KeywordHelper::WriteOptionallyQuoted(entry.schema.name) + ".";
+		result += KeywordHelper::WriteQuoted(entry.schema.name, '"') + ".";
 	}
-	result += KeywordHelper::WriteOptionallyQuoted(entry.name);
+	result += KeywordHelper::WriteQuoted(entry.name, '"');
 
 	result += " VALUES (";
 
@@ -108,7 +108,7 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 			result += ", ";
 		}
 		auto &col = columns.GetColumn(column_indices[i]);
-		result += ":" + KeywordHelper::WriteOptionallyQuoted(col.GetName());
+		result += ":" + KeywordHelper::WriteQuoted(col.GetName(), '"');
 	}
 	result += ");";
 	return result;

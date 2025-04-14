@@ -94,10 +94,6 @@ string TeradataType::ToString() const {
 		return "UDT_STRUCTURED";
 	case TeradataTypeId::XML:
 		return "XML";
-	case TeradataTypeId::DATE_A:
-		return "DATE (ANSI)";
-	case TeradataTypeId::DATE_T:
-		return "DATE (TERADATA)";
 	default:
 		throw NotImplementedException("Unimplemented Teradata type");
 	}
@@ -139,9 +135,6 @@ LogicalType TeradataType::ToDuckDB() const {
 	case TeradataTypeId::FLOAT:
 		// Teradata only supports 8-byte floats (REAL and DOUBLE PRECISION and FLOAT are all the same)
 		return LogicalType::DOUBLE;
-	case TeradataTypeId::DATE_T:
-	case TeradataTypeId::DATE_A:
-		return LogicalType::DATE;
 	case TeradataTypeId::JSON:
 		return LogicalType::JSON();
 	case TeradataTypeId::INTERVAL_HOUR_TO_SECOND:
