@@ -271,10 +271,6 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 	}
 }
 
-
-
-
-
 //
 //
 // namespace {

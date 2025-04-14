@@ -9,6 +9,8 @@
 
 namespace duckdb {
 
+class TeradataColumnWriter;
+
 class TeradataConnection {
 public:
 	explicit TeradataConnection(const string &logon_string_p) {
@@ -38,7 +40,9 @@ public:
 	void Execute(const string &sql);
 
 	// Execute a parameterized statement, once for each row in the chunk
-	void Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena);
+	// TODO: Move arena and writers into a ExecuteState class
+	void Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
+	             vector<unique_ptr<TeradataColumnWriter>> &writers);
 
 	// Execute a query with a result set, optionally materializing everything
 	unique_ptr<TeradataQueryResult> Query(const string &sql, bool materialize);

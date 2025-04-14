@@ -32,7 +32,8 @@ set(EXTENSION_SOURCES
     src/teradata_execute.cpp
     src/teradata_clear_cache.cpp
     src/teradata_filter.cpp
-    src/teradata_column_reader.cpp)
+    src/teradata_column_reader.cpp
+    src/teradata_column_writer.cpp)
 
 # Teradata on macos
 if(APPLE)

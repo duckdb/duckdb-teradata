@@ -89,7 +89,7 @@ public:
 	StreamingTeradataQueryResult(vector<TeradataType> types_p, unique_ptr<TeradataRequestContext> ctx_p)
 	    : TeradataQueryResult(std::move(types_p)), ctx(std::move(ctx_p)) {
 
-		for(auto &type : types) {
+		for (auto &type : types) {
 			readers.push_back(TeradataColumnReader::Make(type));
 		}
 	}

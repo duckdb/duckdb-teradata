@@ -9,6 +9,7 @@ namespace duckdb {
 
 class TeradataConnection;
 class TeradataColumnReader;
+class TeradataColumnWriter;
 
 class TeradataRequestContext {
 public:
@@ -19,7 +20,8 @@ public:
 	void Execute(const string &sql);
 
 	// Execute a paramterized statment, once for each row in the chunk
-	void Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena);
+	void Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
+	             vector<unique_ptr<TeradataColumnWriter>> &writers);
 
 	// Prepare a statement, returning the types of the result set
 	void Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names);

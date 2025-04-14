@@ -11,6 +11,7 @@
 #include "duckdb/planner/operator/logical_insert.hpp"
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 
+#include <teradata_column_writer.hpp>
 #include <duckdb/planner/operator/logical_create_table.hpp>
 
 namespace duckdb {
@@ -41,7 +42,9 @@ public:
 	idx_t insert_count = 0;
 	string insert_sql;
 
+	// TODO: move these into a state object
 	ArenaAllocator arena;
+	vector<unique_ptr<TeradataColumnWriter>> writers;
 
 	explicit TeradataInsertGlobalState(ClientContext &context) : arena(BufferAllocator::Get(context)) {
 	}
@@ -137,6 +140,13 @@ unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &co
 	result->insert_count = 0;
 	result->insert_sql = GetInsertSQL(*this, *insert_table);
 
+	const auto table_types = insert_table->GetTypes();
+	result->writers.reserve(table_types.size());
+	for (auto &type : table_types) {
+		// Initialize writers
+		result->writers.push_back(TeradataColumnWriter::Make(type));
+	}
+
 	return std::move(result);
 }
 
@@ -154,7 +164,7 @@ SinkResultType TeradataInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 	state.arena.Reset();
 
 	// Execute, passing the data chunk as parameters.
-	conn.Execute(state.insert_sql, chunk, state.arena);
+	conn.Execute(state.insert_sql, chunk, state.arena, state.writers);
 	state.insert_count += chunk.size();
 
 	return SinkResultType::NEED_MORE_INPUT;

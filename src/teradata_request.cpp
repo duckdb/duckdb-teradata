@@ -1,6 +1,7 @@
 #include "teradata_request.hpp"
 #include "teradata_type.hpp"
 #include "teradata_connection.hpp"
+#include "teradata_column_writer.hpp"
 
 #include "util/binary_reader.hpp"
 
@@ -31,295 +32,14 @@ void TeradataRequestContext::Execute(const string &sql) {
 	EndRequest();
 }
 
-namespace {
-
-template<class T>
-struct FixedSizeField {
-	static idx_t GetSize(const_data_ptr_t) {
-		return sizeof(T);
-	}
-	static idx_t Write(data_ptr_t dst_ptr, const_data_ptr_t src_ptr) {
-		memcpy(dst_ptr, src_ptr, sizeof(T));
-		return sizeof(T);
-	}
-	static idx_t WriteNull(data_ptr_t dst_ptr) {
-		memset(dst_ptr, 0, sizeof(T));
-		return 0;
-	}
-	static idx_t NullSize() {
-		return 0;
-	}
-};
-
-struct VarlenField {
-	static idx_t GetSize(const_data_ptr_t src_ptr) {
-		// Variable length
-		const auto &string_data = *reinterpret_cast<const string_t *>(src_ptr);
-		return sizeof(uint16_t) + string_data.GetSize();
-	}
-	static idx_t Write(data_ptr_t dst_ptr, const_data_ptr_t src_ptr) {
-		// Variable length
-		const auto &string_data = *reinterpret_cast<const string_t *>(src_ptr);
-		const auto string_size = string_data.GetSize();
-
-		// Copy length
-		memcpy(dst_ptr, &string_size, sizeof(uint16_t));
-
-		// Increment pointer
-		dst_ptr += sizeof(uint16_t);
-
-		// Copy data
-		memcpy(dst_ptr, string_data.GetDataUnsafe(), string_size);
-
-		// Return written length
-		return sizeof(uint16_t) + string_size;
-	}
-	static idx_t WriteNull(data_ptr_t dst_ptr) {
-		// We always write a zero length, even when null
-		constexpr auto zero_length = 0;
-		memcpy(dst_ptr, &zero_length, sizeof(uint16_t));
-		return sizeof(uint16_t);
-	}
-	static idx_t NullSize() {
-		return sizeof(uint16_t);
-	}
-};
-
-template<class T>
-struct DecimalField {
-	static idx_t GetSize(const_data_ptr_t) {
-		return sizeof(T);
-	}
-	static idx_t Write(data_ptr_t dst_ptr, const_data_ptr_t src_ptr) {
-		memcpy(dst_ptr, src_ptr, sizeof(T));
-		return sizeof(T);
-	}
-	static idx_t WriteNull(data_ptr_t) {
-		return 0;
-	}
-	static idx_t NullSize() {
-		return 0;
-	}
-};
-
-// Specialize for int8_t
-template<> idx_t DecimalField<int8_t>::Write(data_ptr_t dst_ptr, const_data_ptr_t src_ptr) {
-	const auto decimal = *reinterpret_cast<const uint16_t *>(src_ptr);
-	// Teradata stores small decimals in 1 byte
-	const auto small_decimal = static_cast<int8_t>(decimal);
-	memcpy(dst_ptr, &small_decimal, sizeof(int8_t));
-	return sizeof(int8_t);
-}
-
-struct DateField {
-	static idx_t GetSize(const_data_ptr_t) {
-		return sizeof(int32_t);
-	}
-	static idx_t Write(data_ptr_t dst_ptr, const_data_ptr_t src_ptr) {
-		const auto duck_date = *reinterpret_cast<const date_t*>(src_ptr);
-
-		// DuckDB Dates are days since 1970-01-01
-		// Teradata dates are (YEAR - 1900) * 10000 + (MONTH * 100) + DAY
-
-		int32_t year = 0;
-		int32_t month = 0;
-		int32_t day = 0;
-
-		Date::Convert(duck_date, year, month, day);
-
-		const auto td_date = (year - 1900) * 10000 + month * 100 + day;
-
-		memcpy(dst_ptr, &td_date, sizeof(int32_t));
-		return sizeof(int32_t);
-	}
-	static idx_t WriteNull(data_ptr_t) {
-		return 0;
-	}
-	static idx_t NullSize() {
-		return 0;
-	}
-};
-
-}
-
-template<class FIELD>
-static void GetFieldSize(const UnifiedVectorFormat &format, idx_t row_count, const LogicalType &type,
-							  int32_t *length_array) {
-
-	const auto type_size = GetTypeIdSize(type.InternalType());
-
-	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
-		const auto row_idx = format.sel->get_index(out_idx);
-		auto &row_length = length_array[out_idx];
-
-		if (!format.validity.RowIsValid(row_idx)) {
-			// We always write a zero length, even when null
-			row_length += FIELD::NullSize();
-			continue;
-		}
-
-		const auto src_ptr = const_data_ptr_cast(format.data + type_size * row_idx);
-		row_length += FIELD::GetSize(src_ptr);
-	}
-}
-
-template<class FIELD>
-static void WriteField(const LogicalType &type, const UnifiedVectorFormat &format, idx_t row_count, idx_t col_idx,
-								   char **record_array, char **cursor_array) {
-
-	const auto type_length = GetTypeIdSize(type.InternalType());
-
-	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
-		const auto row_idx = format.sel->get_index(out_idx);
-		auto &row_record = cursor_array[out_idx];
-
-
-		auto src_ptr = const_data_ptr_cast(format.data + type_length * row_idx);
-		auto dst_ptr = data_ptr_cast(row_record);
-
-		if (!format.validity.RowIsValid(row_idx)) {
-			// Set the presence bit
-
-			const auto byte_idx = col_idx / 8;
-			const auto bit_idx = (7 - (col_idx % 8));
-			auto &validity_byte = record_array[out_idx][byte_idx];
-			validity_byte |= 1 << bit_idx;
-
-			row_record += FIELD::WriteNull(dst_ptr);
-
-			continue;
-		}
-
-		row_record += FIELD::Write(dst_ptr, src_ptr);
-	}
-}
-
-static void WriteColumnSizes(const UnifiedVectorFormat &format, idx_t row_count, const LogicalType &type,
-						int32_t *length_array) {
-	switch (type.id()) {
-		case LogicalTypeId::VARCHAR:
-		case LogicalTypeId::BLOB:
-			GetFieldSize<VarlenField>(format, row_count, type, length_array);
-			break;
-		case LogicalTypeId::TINYINT:
-			GetFieldSize<FixedSizeField<int8_t>>(format, row_count, type, length_array);
-		case LogicalTypeId::SMALLINT:
-			GetFieldSize<FixedSizeField<int16_t>>(format, row_count, type, length_array);
-			break;
-		case LogicalTypeId::INTEGER:
-			GetFieldSize<FixedSizeField<int32_t>>(format, row_count, type, length_array);
-			break;
-		case LogicalTypeId::BIGINT:
-			GetFieldSize<FixedSizeField<int64_t>>(format, row_count, type, length_array);
-			break;
-		case LogicalTypeId::DOUBLE: {
-			GetFieldSize<FixedSizeField<double>>(format, row_count, type, length_array);
-			break;
-		}
-		case LogicalTypeId::DECIMAL: {
-			const auto width = DecimalType::GetWidth(type);
-			if (width <= 2) {
-				GetFieldSize<DecimalField<uint8_t>>(format, row_count, type, length_array);
-				break;
-			}
-			if(width <= 4) {
-				GetFieldSize<DecimalField<int16_t>>(format, row_count, type, length_array);
-				break;
-			}
-			if(width <= 9) {
-				GetFieldSize<DecimalField<int32_t>>(format, row_count, type, length_array);
-				break;
-			}
-			if(width <= 18) {
-				GetFieldSize<DecimalField<int64_t>>(format, row_count, type, length_array);
-				break;
-			}
-			if (width <= 38) {
-				GetFieldSize<DecimalField<hugeint_t>>(format, row_count, type, length_array);
-				break;
-			}
-			throw NotImplementedException("Unsupported decimal width: %d", width);
-		}
-		case LogicalTypeId::DATE:
-			GetFieldSize<DateField>(format, row_count, type, length_array);
-			break;
-	default:
-		throw NotImplementedException("Unsupported type: %s", type.ToString());
-	}
-}
-
-static void WriteColumnValues(const UnifiedVectorFormat &format, idx_t row_count, idx_t col_idx, const LogicalType &type,
-                        char **record_array, char **cursor_array) {
-
-	switch (type.id()) {
-	case LogicalTypeId::VARCHAR:
-	case LogicalTypeId::BLOB:
-		WriteField<VarlenField>(type, format, row_count, col_idx, record_array, cursor_array);
-		break;
-	case LogicalTypeId::TINYINT:
-		WriteField<FixedSizeField<int8_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-		break;
-	case LogicalTypeId::SMALLINT:
-		WriteField<FixedSizeField<int16_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-		break;
-	case LogicalTypeId::INTEGER:
-		WriteField<FixedSizeField<int32_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-		break;
-	case LogicalTypeId::BIGINT:
-		WriteField<FixedSizeField<int64_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-		break;
-	case LogicalTypeId::DOUBLE: {
-		WriteField<FixedSizeField<double>>(type, format, row_count, col_idx, record_array, cursor_array);
-		break;
-	}
-	case LogicalTypeId::DECIMAL: {
-		const auto width = DecimalType::GetWidth(type);
-		if (width <= 2) {
-			WriteField<DecimalField<uint8_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-			break;
-		}
-		if(width <= 4) {
-			WriteField<DecimalField<int16_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-			break;
-		}
-		if(width <= 9) {
-			WriteField<DecimalField<int32_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-			break;
-		}
-		if(width <= 18) {
-			WriteField<DecimalField<int64_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-			break;
-		}
-		if (width <= 38) {
-			WriteField<DecimalField<hugeint_t>>(type, format, row_count, col_idx, record_array, cursor_array);
-			break;
-		}
-		throw NotImplementedException("Unsupported decimal width: %d", width);
-	}
-	case LogicalTypeId::DATE:
-		WriteField<DateField>(type, format, row_count, col_idx, record_array, cursor_array);
-		break;
-	default:
-		throw NotImplementedException("Unsupported type: %s", type.ToString());
-	}
-}
-
-void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena) {
+void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
+                                     vector<unique_ptr<TeradataColumnWriter>> &writers) {
 
 	const auto row_count = chunk.size();
 	const auto col_count = chunk.ColumnCount();
 
 	D_ASSERT(row_count > 0);
-
-	// Setup unified vector formats for each column
-	vector<UnifiedVectorFormat> formats;
-	formats.resize(chunk.ColumnCount());
-
-	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-		auto &col_vec = chunk.data[col_idx];
-		auto &format = formats[col_idx];
-		col_vec.ToUnifiedFormat(row_count, format);
-	}
+	D_ASSERT(writers.size() == chunk.ColumnCount());
 
 	// Allocate space for the row pointers and lengths
 	const auto record_array = reinterpret_cast<char **>(arena.AllocateAligned(row_count * sizeof(char *)));
@@ -329,17 +49,19 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	// How many bytes are needed for the validity (presence) bits?
 	const int32_t validity_bytes = (static_cast<int32_t>(col_count) + 7) / 8;
 
+	// Initialize the writers
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		writers[col_idx]->Init(chunk.data[col_idx], row_count);
+	}
+
 	// Set the length of the rows to the length of the validity bits
 	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 		length_array[out_idx] = validity_bytes;
 	}
 
-	// Column-wise compute the size of the rows
+	// First pass, column-wise compute the size of the rows
 	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-		auto &format = formats[col_idx];
-		auto &col_type = chunk.data[col_idx].GetType();
-
-		WriteColumnSizes(format, row_count, col_type, length_array);
+		writers[col_idx]->ComputeSizes(row_count, length_array);
 	}
 
 	// Allocate space for the rows
@@ -351,16 +73,18 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 		record_array[out_idx] = row_record;
 		cursor_array[out_idx] = row_record + validity_bytes;
 
-		// Set the presence bits to 0
+		// initialize the presence bits to 0
 		memset(row_record, 0, validity_bytes);
 	}
 
-	// Now, second pass, actually write the rows
+	// Second pass, set the presence bits
 	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-		auto &format = formats[col_idx];
-		auto &col_type = chunk.data[col_idx].GetType();
+		writers[col_idx]->SetPresenceBits(row_count, col_idx, col_count, record_array);
+	}
 
-		WriteColumnValues(format, row_count, col_idx, col_type, record_array, cursor_array);
+	// Now, third pass, actually write the rows
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		writers[col_idx]->EncodeVector(row_count, cursor_array);
 	}
 
 	dbc.using_data_ptr_array = reinterpret_cast<char *>(record_array);
@@ -772,6 +496,7 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<unique_ptr<Ter
 
 				auto &col_vec = chunk.data[col_idx];
 
+				// Call the reader to decode the column
 				readers[col_idx]->Decode(reader, col_vec, row_idx, is_null);
 			}
 

@@ -20,4 +20,4 @@ public:
 	static unique_ptr<TeradataColumnReader> Make(const TeradataType &type);
 };
 
-}
+} // namespace duckdb

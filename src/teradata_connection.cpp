@@ -88,9 +88,10 @@ void TeradataConnection::Execute(const string &sql) {
 	ctx.Execute(sql);
 }
 
-void TeradataConnection::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena) {
+void TeradataConnection::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
+                                 vector<unique_ptr<TeradataColumnWriter>> &writers) {
 	TeradataRequestContext ctx(*this);
-	ctx.Execute(sql, chunk, arena);
+	ctx.Execute(sql, chunk, arena, writers);
 }
 
 unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize) {

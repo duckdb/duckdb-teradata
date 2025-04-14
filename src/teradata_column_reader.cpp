@@ -9,7 +9,7 @@ class TeradataVarcharReader final : public TeradataColumnReader {
 public:
 	void Decode(BinaryReader &reader, Vector &vec, idx_t row_idx, bool is_null) override {
 		const auto length = reader.Read<uint16_t>();
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(vec, row_idx, true);
 		} else {
 			const auto src_ptr = reader.ReadBytes(length);
@@ -19,15 +19,17 @@ public:
 	}
 
 private:
+	// TODO: Deal with character encoding/conversion here
 	vector<char> encoding_buffer;
 };
 
 class TeradataCharReader final : public TeradataColumnReader {
 public:
-	explicit TeradataCharReader(int32_t max_size_p) : max_size(max_size_p) { }
+	explicit TeradataCharReader(int32_t max_size_p) : max_size(max_size_p) {
+	}
 
 	void Decode(BinaryReader &reader, Vector &vec, idx_t row_idx, bool is_null) override {
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(vec, row_idx, true);
 			reader.Skip(max_size);
 		} else {
@@ -36,15 +38,18 @@ public:
 			dst_ptr[row_idx] = StringVector::AddString(vec, src_ptr, max_size);
 		}
 	}
+
 private:
 	idx_t max_size;
+
+	// TODO: Deal with character encoding/conversion here
 	vector<char> encoding_buffer;
 };
 
 class TeradataDateReader final : public TeradataColumnReader {
 public:
 	void Decode(BinaryReader &reader, Vector &vec, idx_t row_idx, bool is_null) override {
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(vec, row_idx, true);
 		} else {
 			// Teradata stores dates in the following format
@@ -60,14 +65,15 @@ public:
 	}
 };
 
-class TeradataByteReader final : public TeradataColumnReader{
+class TeradataByteReader final : public TeradataColumnReader {
 public:
-	explicit TeradataByteReader(int32_t max_size_p) : max_size(max_size_p) { }
+	explicit TeradataByteReader(int32_t max_size_p) : max_size(max_size_p) {
+	}
 
 	void Decode(BinaryReader &reader, Vector &vec, idx_t row_idx, bool is_null) override {
 		D_ASSERT(vec.GetType().id() == LogicalTypeId::BLOB);
 
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(vec, row_idx, true);
 			reader.Skip(max_size);
 		} else {
@@ -76,6 +82,7 @@ public:
 			dst_ptr[row_idx] = StringVector::AddStringOrBlob(vec, src_ptr, max_size);
 		}
 	}
+
 private:
 	idx_t max_size;
 };
@@ -86,7 +93,7 @@ public:
 		D_ASSERT(vec.GetType().id() == LogicalTypeId::BLOB);
 
 		const auto length = reader.Read<uint16_t>();
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(vec, row_idx, true);
 		} else {
 			const auto src_ptr = reader.ReadBytes(length);
@@ -96,11 +103,11 @@ public:
 	}
 };
 
-template<class SRC, class DST = SRC>
+template <class SRC, class DST = SRC>
 class TeradataFixedSizeReader final : public TeradataColumnReader {
 public:
 	void Decode(BinaryReader &reader, Vector &vec, idx_t row_idx, bool is_null) override {
-		if(is_null) {
+		if (is_null) {
 			FlatVector::SetNull(vec, row_idx, true);
 			reader.Skip(sizeof(SRC));
 		} else {
@@ -111,40 +118,54 @@ public:
 	}
 };
 
+//----------------------------------------------------------------------------------------------------------------------
+// Constructor
+//----------------------------------------------------------------------------------------------------------------------
+
 unique_ptr<TeradataColumnReader> TeradataColumnReader::Make(const TeradataType &type) {
 	switch (type.GetId()) {
-		case TeradataTypeId::VARCHAR: return make_uniq<TeradataVarcharReader>();
-		case TeradataTypeId::CHAR: return make_uniq<TeradataCharReader>(type.GetLength());
-		case TeradataTypeId::BYTE: return make_uniq<TeradataByteReader>(type.GetLength());
-		case TeradataTypeId::VARBYTE: return make_uniq<TeradataVarbyteReader>();
-		case TeradataTypeId::DATE: return make_uniq<TeradataDateReader>();
-		case TeradataTypeId::BYTEINT: return make_uniq<TeradataFixedSizeReader<int8_t>>();
-		case TeradataTypeId::SMALLINT: return make_uniq<TeradataFixedSizeReader<int16_t>>();
-		case TeradataTypeId::INTEGER: return make_uniq<TeradataFixedSizeReader<int32_t>>();
-		case TeradataTypeId::BIGINT: return make_uniq<TeradataFixedSizeReader<int64_t>>();
-		case TeradataTypeId::FLOAT: return make_uniq<TeradataFixedSizeReader<double>>();
-		case TeradataTypeId::DECIMAL: {
-			const auto width = type.GetWidth();
-			if(width <= 2) {
-				// In teradata, the small decimals are stored as 1 byte, compared to 2 bytes in duckdb
-				return make_uniq<TeradataFixedSizeReader<int8_t, uint16_t>>();
-			}
-			if(width <= 4) {
-				return make_uniq<TeradataFixedSizeReader<int16_t>>();
-			}
-			if (width <= 9) {
-				return make_uniq<TeradataFixedSizeReader<int32_t>>();
-			}
-			if (width <= 18) {
-				return make_uniq<TeradataFixedSizeReader<int64_t>>();
-			}
-			if (width <= 38) {
-				return make_uniq<TeradataFixedSizeReader<hugeint_t>>();
-			}
-			throw InvalidInputException("Invalid Teradata decimal width: %d", width);
+	case TeradataTypeId::VARCHAR:
+		return make_uniq<TeradataVarcharReader>();
+	case TeradataTypeId::CHAR:
+		return make_uniq<TeradataCharReader>(type.GetLength());
+	case TeradataTypeId::BYTE:
+		return make_uniq<TeradataByteReader>(type.GetLength());
+	case TeradataTypeId::VARBYTE:
+		return make_uniq<TeradataVarbyteReader>();
+	case TeradataTypeId::DATE:
+		return make_uniq<TeradataDateReader>();
+	case TeradataTypeId::BYTEINT:
+		return make_uniq<TeradataFixedSizeReader<int8_t>>();
+	case TeradataTypeId::SMALLINT:
+		return make_uniq<TeradataFixedSizeReader<int16_t>>();
+	case TeradataTypeId::INTEGER:
+		return make_uniq<TeradataFixedSizeReader<int32_t>>();
+	case TeradataTypeId::BIGINT:
+		return make_uniq<TeradataFixedSizeReader<int64_t>>();
+	case TeradataTypeId::FLOAT:
+		return make_uniq<TeradataFixedSizeReader<double>>();
+	case TeradataTypeId::DECIMAL: {
+		const auto width = type.GetWidth();
+		if (width <= 2) {
+			// In teradata, the small decimals are stored as 1 byte, compared to 2 bytes in duckdb
+			return make_uniq<TeradataFixedSizeReader<int8_t, int16_t>>();
 		}
-		default:
-			throw NotImplementedException("Teradata type reader for '%s' not implemented", type.ToString());
+		if (width <= 4) {
+			return make_uniq<TeradataFixedSizeReader<int16_t>>();
+		}
+		if (width <= 9) {
+			return make_uniq<TeradataFixedSizeReader<int32_t>>();
+		}
+		if (width <= 18) {
+			return make_uniq<TeradataFixedSizeReader<int64_t>>();
+		}
+		if (width <= 38) {
+			return make_uniq<TeradataFixedSizeReader<hugeint_t>>();
+		}
+		throw InvalidInputException("Invalid Teradata decimal width: %d", width);
+	}
+	default:
+		throw NotImplementedException("Teradata type reader for '%s' not implemented", type.ToString());
 	}
 }
 
