@@ -11,6 +11,9 @@
 #include "duckdb/planner/operator/logical_insert.hpp"
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 
+#include <teradata_column_writer.hpp>
+#include <duckdb/planner/operator/logical_create_table.hpp>
+
 namespace duckdb {
 
 //======================================================================================================================
@@ -24,6 +27,12 @@ TeradataInsert::TeradataInsert(LogicalOperator &op, TableCatalogEntry &table,
       column_index_map(std::move(column_index_map_p)) {
 }
 
+// CREATE TABLE AS
+TeradataInsert::TeradataInsert(LogicalOperator &op, SchemaCatalogEntry &schema, unique_ptr<BoundCreateTableInfo> info)
+    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(nullptr), schema(&schema),
+      info(std::move(info)) {
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // State
 //----------------------------------------------------------------------------------------------------------------------
@@ -33,7 +42,9 @@ public:
 	idx_t insert_count = 0;
 	string insert_sql;
 
+	// TODO: move these into a state object
 	ArenaAllocator arena;
+	vector<unique_ptr<TeradataColumnWriter>> writers;
 
 	explicit TeradataInsertGlobalState(ClientContext &context) : arena(BufferAllocator::Get(context)) {
 	}
@@ -77,7 +88,7 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 		}
 
 		auto &col = columns.GetColumn(column_indices[i]);
-		result += KeywordHelper::WriteOptionallyQuoted(col.GetName());
+		result += KeywordHelper::WriteQuoted(col.GetName(), '"');
 		result += " ";
 
 		// Convert to teradata type first
@@ -89,9 +100,9 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 	result += "INSERT INTO ";
 
 	if (!entry.schema.name.empty()) {
-		result += KeywordHelper::WriteOptionallyQuoted(entry.schema.name) + ".";
+		result += KeywordHelper::WriteQuoted(entry.schema.name, '"') + ".";
 	}
-	result += KeywordHelper::WriteOptionallyQuoted(entry.name);
+	result += KeywordHelper::WriteQuoted(entry.name, '"');
 
 	result += " VALUES (";
 
@@ -100,19 +111,24 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 			result += ", ";
 		}
 		auto &col = columns.GetColumn(column_indices[i]);
-		result += ":" + KeywordHelper::WriteOptionallyQuoted(col.GetName());
+		result += ":" + KeywordHelper::WriteQuoted(col.GetName(), '"');
 	}
 	result += ");";
 	return result;
 }
 
 unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &context) const {
+	TeradataTableEntry *insert_table;
 
+	// If no table supplied, this is a CTAS
 	if (!table) {
-		throw NotImplementedException("Teradata CTAS");
+		// Create a new table!
+		auto &schema_ref = *schema.get_mutable();
+		const auto transaction = schema_ref.GetCatalogTransaction(context);
+		insert_table = &schema_ref.CreateTable(transaction, *info)->Cast<TeradataTableEntry>();
+	} else {
+		insert_table = &table.get_mutable()->Cast<TeradataTableEntry>();
 	}
-
-	TeradataTableEntry *insert_table = &table.get_mutable()->Cast<TeradataTableEntry>();
 
 	// Prepare just to see that we type check
 	// TODO: We should type check the statement somehow...
@@ -123,6 +139,13 @@ unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &co
 	result->table = insert_table;
 	result->insert_count = 0;
 	result->insert_sql = GetInsertSQL(*this, *insert_table);
+
+	const auto table_types = insert_table->GetTypes();
+	result->writers.reserve(table_types.size());
+	for (auto &type : table_types) {
+		// Initialize writers
+		result->writers.push_back(TeradataColumnWriter::Make(type));
+	}
 
 	return std::move(result);
 }
@@ -141,7 +164,7 @@ SinkResultType TeradataInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 	state.arena.Reset();
 
 	// Execute, passing the data chunk as parameters.
-	conn.Execute(state.insert_sql, chunk, state.arena);
+	conn.Execute(state.insert_sql, chunk, state.arena, state.writers);
 	state.insert_count += chunk.size();
 
 	return SinkResultType::NEED_MORE_INPUT;
@@ -215,9 +238,23 @@ unique_ptr<PhysicalOperator> TeradataCatalog::PlanInsert(ClientContext &context,
 
 	MaterializeTeradataScans(*plan);
 
+	// TODO: This is where we would cast to TD types if needed
 	// plan = AddCastToTeradataTypes(context, std::move(plan));
 
 	auto insert = make_uniq<TeradataInsert>(op, op.table, op.column_index_map);
+	insert->children.push_back(std::move(plan));
+	return std::move(insert);
+}
+
+unique_ptr<PhysicalOperator> TeradataCatalog::PlanCreateTableAs(ClientContext &context, LogicalCreateTable &op,
+                                                                unique_ptr<PhysicalOperator> plan) {
+
+	// TODO: This is where we would cast to TD types if needed
+	// plan = AddCastToTeradataTypes(context, std::move(plan));
+
+	MaterializeTeradataScans(*plan);
+
+	auto insert = make_uniq<TeradataInsert>(op, op.schema, std::move(op.info));
 	insert->children.push_back(std::move(plan));
 	return std::move(insert);
 }

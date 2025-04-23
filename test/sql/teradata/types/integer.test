@@ -17,19 +17,19 @@ statement ok
 DROP TABLE IF EXISTS td.integer_table;
 
 # These types are supported
-# BOOLEAN, TINYINT, SMALLINT, INTEGER, BIGINT
+# TINYINT, SMALLINT, INTEGER, BIGINT
 statement ok
-CREATE TABLE td.integer_table(b BOOLEAN, i8 TINYINT, i16 SMALLINT, i32 INTEGER, i64 BIGINT)
+CREATE TABLE td.integer_table(i8 TINYINT, i16 SMALLINT, i32 INTEGER, i64 BIGINT)
 
 # Insert into integer table
 statement ok
-INSERT INTO td.integer_table VALUES (true, 1, 2, 3, 4);
+INSERT INTO td.integer_table VALUES (1, 2, 3, 4);
 
 # Select from integer table
-query IIIII
+query IIII
 SELECT * FROM td.integer_table;
 ----
-true	1	2	3	4
+1	2	3	4
 
 statement ok
 DROP TABLE IF EXISTS td.integer_table;

@@ -1,0 +1,131 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+attach '${TD_LOGON}' as td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+# Drop table if already exists
+statement ok
+DROP TABLE IF EXISTS td.filter_pushdown_test;
+
+# Create a test table
+statement ok
+CREATE TABLE td.filter_pushdown_test AS SELECT i FROM range(5) r(i);
+
+# Greater than
+query I
+SELECT * FROM td.filter_pushdown_test WHERE i > 2 ORDER BY ALL;
+----
+3
+4
+
+query II
+EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i>2;
+----
+physical_plan	<REGEX>:.*Filters: i>2.*
+
+# Less than
+query I
+SELECT * FROM td.filter_pushdown_test WHERE i < 2 ORDER BY ALL;
+----
+0
+1
+
+query II
+EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i<2;
+----
+physical_plan	<REGEX>:.*Filters: i<2.*
+
+# Equal
+query I
+SELECT * FROM td.filter_pushdown_test WHERE i = 2 ORDER BY ALL;
+----
+2
+
+query II
+EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i=2;
+----
+physical_plan	<REGEX>:.*Filters: i=2.*
+
+# Not equal
+query I
+SELECT * FROM td.filter_pushdown_test WHERE i <> 2 ORDER BY ALL;
+----
+0
+1
+3
+4
+
+query II
+EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i<>2;
+----
+physical_plan	<REGEX>:.*Filters: i!=2.*
+
+# AND
+query I
+SELECT * FROM td.filter_pushdown_test WHERE i > 1 AND i < 4 ORDER BY ALL;
+----
+2
+3
+
+query II
+EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i>1 AND i<4;
+----
+physical_plan	<REGEX>:.*Filters: i>1 AND i<4.*
+
+# OR
+query I
+SELECT * FROM td.filter_pushdown_test WHERE i < 1 OR i > 3 ORDER BY ALL;
+----
+0
+4
+
+query II
+EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i<1 OR i>3;
+----
+physical_plan	<REGEX>:.*i<1 OR i>3.*
+
+# IN
+query I
+SELECT * FROM td.filter_pushdown_test WHERE i IN (0, 2, 4) ORDER BY ALL;
+----
+0
+2
+4
+
+query II
+EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i IN (0, 2, 4);
+----
+physical_plan	<REGEX>:.*i IN \(0, 2, 4\).*
+
+
+# Blob literal
+statement ok
+DROP TABLE IF EXISTS td.filter_pushdown_blob;
+
+statement ok
+CREATE TABLE td.filter_pushdown_blob (a INT, b BLOB);
+
+statement ok
+INSERT INTO td.filter_pushdown_blob VALUES
+	(0, 'abc'::BLOB),
+	(1, '000102030405060708090A0B0C0D0E0F'::BLOB);
+
+query II
+SELECT * FROM td.filter_pushdown_blob WHERE b = '000102030405060708090A0B0C0D0E0F' ORDER BY ALL;
+----
+1	000102030405060708090A0B0C0D0E0F
+
+
+
+# clean up
+statement ok
+DROP TABLE IF EXISTS td.test_table;

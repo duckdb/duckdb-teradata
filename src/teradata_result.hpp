@@ -2,6 +2,7 @@
 
 #include "teradata_type.hpp"
 #include "teradata_request.hpp"
+#include "teradata_column_reader.hpp"
 
 namespace duckdb {
 
@@ -87,6 +88,10 @@ class StreamingTeradataQueryResult final : public TeradataQueryResult {
 public:
 	StreamingTeradataQueryResult(vector<TeradataType> types_p, unique_ptr<TeradataRequestContext> ctx_p)
 	    : TeradataQueryResult(std::move(types_p)), ctx(std::move(ctx_p)) {
+
+		for (auto &type : types) {
+			readers.push_back(TeradataColumnReader::Make(type));
+		}
 	}
 
 	bool IsMaterialized() const override {
@@ -94,11 +99,12 @@ public:
 	}
 
 	bool Scan(DataChunk &chunk) override {
-		return ctx->Fetch(chunk, types);
+		return ctx->Fetch(chunk, readers);
 	}
 
 private:
 	unique_ptr<TeradataRequestContext> ctx;
+	vector<unique_ptr<TeradataColumnReader>> readers;
 };
 
 class MaterializedTeradataQueryResult final : public TeradataQueryResult {

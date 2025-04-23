@@ -1,0 +1,77 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+
+# Cleanup in case test failed
+statement ok
+DROP TABLE IF EXISTS td.decimal_table;
+
+# Create table with decimal column
+statement ok
+CREATE TABLE td.decimal_table (d DECIMAL(10, 2));
+
+# Insert some data
+statement ok
+INSERT INTO td.decimal_table VALUES (1.23), (4.56), (7.89);
+
+# Select data
+query I
+SELECT d FROM td.decimal_table ORDER BY ALL;
+----
+1.23
+4.56
+7.89
+
+query I
+SELECT * FROM teradata_query('td', 'SEL d FROM decimal_table ORDER BY d');
+----
+1.23
+4.56
+7.89
+
+# Cleanup
+statement ok
+DROP TABLE IF EXISTS td.decimal_table;
+
+# Now try with decimals in each size category (1-2, 3-4, 5-9, 10-18, 19-38)
+# Cleanup in case test failed
+statement ok
+DROP TABLE IF EXISTS td.decimal_table;
+
+# Create table with decimal column
+statement ok
+CREATE TABLE td.decimal_table (
+	d1 DECIMAL(2, 1),
+	d2 DECIMAL(4, 2),
+	d3 DECIMAL(5, 2),
+	d4 DECIMAL(10, 2),
+	d5 DECIMAL(20, 2));
+
+# Insert some data
+statement ok
+INSERT INTO td.decimal_table VALUES
+	(1.2, 4.56, 7.89, 10.11, 12.13),
+	(4.1, 16.17, 18.19, 20.21, 22.23),
+	(4.2, 26.27, 28.29, 30.31, 32.33);
+
+# Select data
+query IIIII
+SELECT d1, d2, d3, d4, d5 FROM td.decimal_table ORDER BY ALL;
+----
+1.2	4.56	7.89	10.11	12.13
+4.1	16.17	18.19	20.21	22.23
+4.2	26.27	28.29	30.31	32.33
+
+statement ok
+DROP TABLE IF EXISTS td.decimal_table;

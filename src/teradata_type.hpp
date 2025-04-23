@@ -88,8 +88,6 @@ enum class TeradataTypeId : uint8_t {
 	XML,
 
 	// Extra, only used when binding
-	DATE_T,
-	DATE_A,
 	LONGVARBYTE,
 	LONGVARGRAPHIC,
 };
@@ -108,8 +106,8 @@ public:
 	int64_t GetLength() const {
 		return width;
 	}
-	int64_t GetPrecision() const {
-		return scale;
+	int64_t GetWidth() const {
+		return width;
 	}
 	int64_t GetScale() const {
 		return scale;
@@ -118,8 +116,8 @@ public:
 	void SetLength(const int64_t length_p) {
 		width = length_p;
 	}
-	void SetPrecision(const int64_t precision_p) {
-		width = precision_p;
+	void SetWidth(const int64_t width_p) {
+		width = width_p;
 	}
 	void SetScale(const int64_t scale_p) {
 		scale = scale_p;

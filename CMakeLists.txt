@@ -15,7 +15,6 @@ include_directories(src)
 set(EXTENSION_SOURCES
     src/teradata_extension.cpp
     src/teradata_secret.cpp
-    src/teradata_scan.cpp
     src/teradata_storage.cpp
     src/teradata_catalog.cpp
     src/teradata_connection.cpp
@@ -31,7 +30,10 @@ set(EXTENSION_SOURCES
     src/teradata_table_entry.cpp
     src/teradata_type.cpp
     src/teradata_execute.cpp
-    src/teradata_clear_cache.cpp)
+    src/teradata_clear_cache.cpp
+    src/teradata_filter.cpp
+    src/teradata_column_reader.cpp
+    src/teradata_column_writer.cpp)
 
 # Teradata on macos
 if(APPLE)

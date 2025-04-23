@@ -1,6 +1,7 @@
 #include "teradata_request.hpp"
 #include "teradata_type.hpp"
 #include "teradata_connection.hpp"
+#include "teradata_column_writer.hpp"
 
 #include "util/binary_reader.hpp"
 
@@ -31,22 +32,14 @@ void TeradataRequestContext::Execute(const string &sql) {
 	EndRequest();
 }
 
-void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena) {
+void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
+                                     vector<unique_ptr<TeradataColumnWriter>> &writers) {
 
 	const auto row_count = chunk.size();
 	const auto col_count = chunk.ColumnCount();
 
 	D_ASSERT(row_count > 0);
-
-	// Setup unified vector formats for each column
-	vector<UnifiedVectorFormat> formats;
-	formats.resize(chunk.ColumnCount());
-
-	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-		auto &col_vec = chunk.data[col_idx];
-		auto &format = formats[col_idx];
-		col_vec.ToUnifiedFormat(row_count, format);
-	}
+	D_ASSERT(writers.size() == chunk.ColumnCount());
 
 	// Allocate space for the row pointers and lengths
 	const auto record_array = reinterpret_cast<char **>(arena.AllocateAligned(row_count * sizeof(char *)));
@@ -56,61 +49,19 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	// How many bytes are needed for the validity (presence) bits?
 	const int32_t validity_bytes = (static_cast<int32_t>(col_count) + 7) / 8;
 
+	// Initialize the writers
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		writers[col_idx]->Init(chunk.data[col_idx], row_count);
+	}
+
 	// Set the length of the rows to the length of the validity bits
 	for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
 		length_array[out_idx] = validity_bytes;
 	}
 
-	// Column-wise compute the size of the rows
+	// First pass, column-wise compute the size of the rows
 	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-		auto &format = formats[col_idx];
-		auto &col_type = chunk.data[col_idx].GetType();
-
-		const auto type_length = GetTypeIdSize(col_type.InternalType());
-		const auto type_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
-
-		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
-			const auto row_idx = format.sel->get_index(out_idx);
-
-			if (!format.validity.RowIsValid(row_idx)) {
-				// Do not add the length of this column if it is null
-
-				// Except in the case it is a varchar, in which case we should write a zero length
-				if (type_varlen) {
-					length_array[out_idx] += sizeof(uint16_t);
-				}
-
-				continue;
-			}
-
-			auto &row_length = length_array[out_idx];
-
-			if (!type_varlen) {
-				// Fixed length
-				const auto col_length = type_length;
-				const auto new_length = row_length + col_length;
-
-				if (new_length > NumericLimits<int32_t>::Maximum()) {
-					throw InvalidInputException("Row too long for Teradata");
-				}
-
-				row_length += UnsafeNumericCast<int32_t>(col_length);
-			} else {
-				// Variable length
-				const auto str_length = UnifiedVectorFormat::GetData<string_t>(format)[row_idx].GetSize();
-				if (str_length > TeradataType::MAX_TYPE_LENGTH) {
-					throw InvalidInputException("String too long for Teradata: %d", str_length);
-				}
-
-				// Add the length of the string + the length of the length prefix
-				const auto new_length = row_length + sizeof(uint16_t) + str_length;
-				if (new_length > NumericLimits<int32_t>::Maximum()) {
-					throw InvalidInputException("Row too long for Teradata");
-				}
-
-				row_length += UnsafeNumericCast<int32_t>(sizeof(uint16_t) + str_length);
-			}
-		}
+		writers[col_idx]->ComputeSizes(row_count, length_array);
 	}
 
 	// Allocate space for the rows
@@ -122,69 +73,18 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 		record_array[out_idx] = row_record;
 		cursor_array[out_idx] = row_record + validity_bytes;
 
-		// Set the presence bits to 0
+		// initialize the presence bits to 0
 		memset(row_record, 0, validity_bytes);
 	}
 
-	// Now, second pass, actually write the rows
-
+	// Second pass, set the presence bits
 	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-		auto &format = formats[col_idx];
-		auto &col_type = chunk.data[col_idx].GetType();
+		writers[col_idx]->SetPresenceBits(row_count, col_idx, col_count, record_array);
+	}
 
-		const auto type_length = GetTypeIdSize(col_type.InternalType());
-		const auto type_varlen = col_type.InternalType() == PhysicalType::VARCHAR;
-
-		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
-			const auto row_idx = format.sel->get_index(out_idx);
-
-			if (!format.validity.RowIsValid(row_idx)) {
-				// Set the presence bit
-
-				const auto byte_idx = col_idx / 8;
-				const auto bit_idx = (7 - (col_idx % 8));
-				auto &validity_byte = record_array[out_idx][byte_idx];
-				validity_byte |= 1 << bit_idx;
-
-				// Also, if this is a varchar we should write a zero length as well
-				if (type_varlen) {
-					constexpr auto zero_length = 0;
-					memcpy(cursor_array[out_idx], &zero_length, sizeof(uint16_t));
-					cursor_array[out_idx] += sizeof(uint16_t);
-				}
-
-				continue;
-			}
-
-			auto &row_record = cursor_array[out_idx];
-
-			if (!type_varlen) {
-				// Fixed length
-				const auto col_data = format.data;
-				const auto col_size = type_length;
-				memcpy(row_record, col_data + col_size * row_idx, col_size);
-
-				// Increment pointer
-				row_record += col_size;
-
-			} else {
-				// Variable length
-				const auto &string_data = UnifiedVectorFormat::GetData<string_t>(format)[row_idx];
-				const auto string_size = string_data.GetSize();
-
-				// Copy length
-				memcpy(row_record, &string_size, sizeof(uint16_t));
-
-				// Increment pointer
-				row_record += sizeof(uint16_t);
-
-				// Copy data
-				memcpy(row_record, string_data.GetDataUnsafe(), string_size);
-
-				// Increment pointer
-				row_record += string_size;
-			}
-		}
+	// Now, third pass, actually write the rows
+	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+		writers[col_idx]->EncodeVector(row_count, cursor_array);
 	}
 
 	dbc.using_data_ptr_array = reinterpret_cast<char *>(record_array);
@@ -255,6 +155,18 @@ static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
 		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 958:
 		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT};
+
+	// DECIMAL
+	case 484:
+		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::STANDARD};
+	case 485:
+		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::NULLABLE};
+	case 984:
+		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_IN};
+	case 985:
+		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_INOUT};
+	case 986:
+		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 472:
 		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::STANDARD};
@@ -333,38 +245,41 @@ static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
 	case 1194:
 		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_OUT};
 
+	// Just treat these as varchar with the max length
 	case 697:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::STANDARD};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD};
 	case 698:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::NULLABLE};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE};
 	case 1197:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_IN};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN};
 	case 1198:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1199:
-		return {TeradataTypeId::LONGVARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
+		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
 
+	// DATE_A (ansidate)
 	case 748:
-		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::STANDARD};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::STANDARD};
 	case 749:
-		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::NULLABLE};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::NULLABLE};
 	case 1248:
-		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_IN};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_IN};
 	case 1249:
-		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_INOUT};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1250:
-		return {TeradataTypeId::DATE_A, TeradataColumnTypeVariant::PARAM_OUT};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_OUT};
 
+	// DATE_T (integerdate)
 	case 752:
-		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::STANDARD};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::STANDARD};
 	case 753:
-		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::NULLABLE};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::NULLABLE};
 	case 1252:
-		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_IN};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_IN};
 	case 1253:
-		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_INOUT};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_INOUT};
 	case 1254:
-		return {TeradataTypeId::DATE_T, TeradataColumnTypeVariant::PARAM_OUT};
+		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_OUT};
 
 	case 756:
 		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::STANDARD};
@@ -382,46 +297,8 @@ static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
 	}
 }
 
-static bool TryParseTypeModsFromFormat(const char *ptr, int16_t len, int64_t &precision, int64_t &scale) {
-	const auto end = ptr + len;
-	if (ptr != end && *ptr == 'X') {
-		ptr++;
-		if (ptr != end && *ptr == '(') {
-			ptr++;
-
-			// parse the length/precision
-			char *endptr;
-			precision = strtol(ptr, &endptr, 10);
-			if (endptr == ptr) {
-				// no number found
-				return false;
-			}
-			ptr = endptr;
-
-			// skip the comma
-			if (ptr != end && *ptr == ',') {
-				ptr++;
-
-				// parse the scale
-				scale = strtol(ptr, &endptr, 10);
-				if (endptr == ptr) {
-					// no number found
-					return false;
-				}
-			}
-			if (ptr != end && *ptr == ')') {
-				ptr++;
-				return true;
-			}
-
-			return false;
-		}
-	}
-	return false;
-}
-
 void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
-	BeginRequest(sql, 'S');
+	BeginRequest(sql, 'P');
 
 	// Fetch and match the second parcel
 	MatchParcel(PclPREPINFO);
@@ -433,31 +310,45 @@ void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &ty
 	for (int16_t col_idx = 0; col_idx < prep_info.ColumnCount; col_idx++) {
 		const auto col_info = reader.Read<CliPrepColInfoType>();
 
+		auto col_type = GetTeradataTypeFromParcel(col_info.DataType);
+		auto &td_type = col_type.type;
+
+		// Try to get the type mods from the format
+		if (td_type.HasLengthModifier()) {
+			td_type.SetLength(col_info.DataLen);
+		} else if (td_type.IsDecimal()) {
+			// The docs seem wrong here.
+			// - The first byte is the fractional digits
+			// - The second byte is the integral digits
+			// This is the opposite of what the docs say
+			const uint8_t scale = col_info.DataLen & 0xFF;
+			const uint8_t width = col_info.DataLen >> 8;
+
+			td_type.SetWidth(width);
+			td_type.SetScale(scale);
+		}
+
+		/*
+		    "ColumnName specifies a column's name, consisting of length in bytes of the name followed by that name in
+		    characters from the current session character set."
+
+		    TODO: We need to do the charset conversion here if needed.
+		 */
+
 		const auto name_len = reader.Read<int16_t>();
 		const auto name_str = reader.ReadBytes(name_len);
 
 		names.emplace_back(name_str, name_len);
 
+		// TODO: Do something with the format?
 		const auto format_len = reader.Read<int16_t>();
-		const auto format_str = reader.ReadBytes(format_len);
+		// const auto format_str = reader.ReadBytes(format_len);
+		reader.Skip(format_len);
 
 		// TODO: Do something with the title?
 		const auto title_len = reader.Read<int16_t>();
 		// const auto title_str = reader.ReadBytes(title_len);
 		reader.Skip(title_len);
-
-		// Get the type from the parcel
-		auto col_type = GetTeradataTypeFromParcel(col_info.DataType);
-		auto &td_type = col_type.type;
-
-		// Try to get the type mods from the format
-		int64_t precision = 0;
-		int64_t scale = 0;
-
-		if (TryParseTypeModsFromFormat(format_str, format_len, precision, scale)) {
-			td_type.SetPrecision(precision);
-			td_type.SetScale(scale);
-		}
 
 		types.push_back(td_type);
 	}
@@ -501,9 +392,18 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 		auto &td_type = col_type.type;
 
 		if (td_type.IsDecimal()) {
-			const auto precision = reader.Read<uint16_t>();
-			const auto scale = reader.Read<uint16_t>();
-			td_type.SetPrecision(precision);
+			// The docs seem wrong here.
+			// - The first byte is the fractional digits
+			// - The second byte is the integral digits
+			// This is the opposite of what the docs say
+			// const auto scale = reader.Read<uint8_t>();
+			// const auto width = reader.Read<uint8_t>();
+
+			const auto length = reader.Read<uint16_t>();
+			const uint8_t scale = length & 0xFF;
+			const uint8_t width = length >> 8;
+
+			td_type.SetWidth(width);
 			td_type.SetScale(scale);
 		} else {
 			const auto length = reader.Read<uint16_t>();
@@ -563,91 +463,7 @@ uint16_t TeradataRequestContext::FetchParcel() {
 	return dbc.fet_parcel_flavor;
 }
 
-template <class T>
-static void ReadField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
-	if (is_null) {
-		FlatVector::SetNull(col_vec, row_idx, true);
-		reader.Skip(sizeof(T));
-	} else {
-		FlatVector::GetData<T>(col_vec)[row_idx] = reader.Read<T>();
-	}
-}
-
-// Specialize booleans to read any non-zero value as true
-static void ReadBoolField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null) {
-	if (is_null) {
-		FlatVector::SetNull(col_vec, row_idx, true);
-		reader.Skip(sizeof(bool));
-	} else {
-		FlatVector::GetData<bool>(col_vec)[row_idx] = reader.Read<int8_t>() != 0;
-	}
-}
-
-static void ReadBlobField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null,
-                          const TeradataType &td_type) {
-	switch (td_type.GetId()) {
-	case TeradataTypeId::VARBYTE: {
-		const auto length = reader.Read<uint16_t>();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-		} else {
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(length);
-			data_ptr[row_idx] = StringVector::AddStringOrBlob(col_vec, text_ptr, length);
-		}
-	} break;
-	case TeradataTypeId::BYTE: {
-		const auto max_length = td_type.GetLength();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-			reader.Skip(max_length);
-		} else {
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(max_length);
-			data_ptr[row_idx] = StringVector::AddStringOrBlob(col_vec, text_ptr, max_length);
-		}
-	} break;
-	default:
-		throw NotImplementedException("Unsupported Binary Type: '%s'", td_type.ToString());
-	}
-}
-
-static void ReadVarcharField(BinaryReader &reader, Vector &col_vec, idx_t row_idx, bool is_null,
-                             const TeradataType &td_type) {
-
-	// The logic differs slightly depending on what type of varchar we are dealing with
-	switch (td_type.GetId()) {
-	case TeradataTypeId::VARCHAR: {
-		const auto length = reader.Read<uint16_t>();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-		} else {
-			// TODO: This is not enough, we need to handle shift-out characters
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(length);
-			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, length);
-		}
-	} break;
-	case TeradataTypeId::DATE_A:
-	case TeradataTypeId::CHAR: {
-		const auto max_length = td_type.GetLength();
-		if (is_null) {
-			FlatVector::SetNull(col_vec, row_idx, true);
-			reader.Skip(max_length);
-		} else {
-			// For CHAR, the max length is the length of the field
-			// TODO: This is not enough, we need to handle shift-out characters
-			const auto data_ptr = FlatVector::GetData<string_t>(col_vec);
-			const auto text_ptr = reader.ReadBytes(max_length);
-			data_ptr[row_idx] = StringVector::AddString(col_vec, text_ptr, max_length);
-		}
-	} break;
-	default:
-		throw NotImplementedException("Unsupported String Type: '%s'", td_type.ToString());
-	}
-}
-
-bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> &types) {
+bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<unique_ptr<TeradataColumnReader>> &readers) {
 	if (!is_open) {
 		chunk.SetCardinality(0);
 		return false;
@@ -680,38 +496,8 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<TeradataType> 
 
 				auto &col_vec = chunk.data[col_idx];
 
-				// Convert Type
-				switch (col_vec.GetType().id()) {
-				case LogicalTypeId::BOOLEAN:
-					ReadBoolField(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::TINYINT:
-					ReadField<int8_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::UTINYINT:
-					ReadField<uint8_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::SMALLINT:
-					ReadField<int16_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::INTEGER:
-					ReadField<int32_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::BIGINT:
-					ReadField<int64_t>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::DOUBLE:
-					ReadField<double>(reader, col_vec, row_idx, is_null);
-					break;
-				case LogicalTypeId::BLOB:
-					ReadBlobField(reader, col_vec, row_idx, is_null, types[col_idx]);
-					break;
-				case LogicalTypeId::VARCHAR:
-					ReadVarcharField(reader, col_vec, row_idx, is_null, types[col_idx]);
-					break;
-				default:
-					throw NotImplementedException("Unsupported Teradata Type: '%s'", col_vec.GetType().ToString());
-				}
+				// Call the reader to decode the column
+				readers[col_idx]->Decode(reader, col_vec, row_idx, is_null);
 			}
 
 			// Increment row id
@@ -756,8 +542,14 @@ unique_ptr<ColumnDataCollection> TeradataRequestContext::FetchAll(const vector<T
 	DataChunk chunk;
 	chunk.Initialize(Allocator::DefaultAllocator(), duck_types);
 
+	// Initialize readers
+	vector<unique_ptr<TeradataColumnReader>> readers;
+	for (const auto &td_type : types) {
+		readers.push_back(TeradataColumnReader::Make(td_type));
+	}
+
 	// Fetch chunk by chunk and append to the CDC
-	while (Fetch(chunk, types)) {
+	while (Fetch(chunk, readers)) {
 		result->Append(append_state, chunk);
 		chunk.Reset();
 	}
@@ -779,6 +571,11 @@ void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	// Pass the SQL
 	dbc.req_ptr = const_cast<char *>(sql.c_str());
 	dbc.req_len = static_cast<int32_t>(sql.size());
+
+	// Set max decimal return width
+	dbc.max_decimal_returned = 38;
+
+	dbc.date_form = 'T'; // date format
 
 	// Initialize request
 	int32_t result = EM_OK;

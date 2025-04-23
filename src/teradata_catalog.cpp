@@ -72,12 +72,6 @@ void TeradataCatalog::ClearCache() {
 // Table Management
 //----------------------------------------------------------------------------------------------------------------------
 
-unique_ptr<PhysicalOperator> TeradataCatalog::PlanCreateTableAs(ClientContext &context, LogicalCreateTable &op,
-                                                                unique_ptr<PhysicalOperator> plan) {
-
-	throw NotImplementedException("TeradataCatalog::PlanCreateTableAs");
-}
-
 unique_ptr<PhysicalOperator> TeradataCatalog::PlanDelete(ClientContext &context, LogicalDelete &op,
                                                          unique_ptr<PhysicalOperator> plan) {
 

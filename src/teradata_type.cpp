@@ -69,7 +69,7 @@ string TeradataType::ToString() const {
 	case TeradataTypeId::BIGINT:
 		return "BIGINT";
 	case TeradataTypeId::DECIMAL:
-		return "DECIMAL";
+		return "DECIMAL(" + to_string(width) + ", " + to_string(scale) + ")";
 	case TeradataTypeId::FLOAT:
 		return "FLOAT";
 	case TeradataTypeId::NUMBER:
@@ -94,10 +94,6 @@ string TeradataType::ToString() const {
 		return "UDT_STRUCTURED";
 	case TeradataTypeId::XML:
 		return "XML";
-	case TeradataTypeId::DATE_A:
-		return "DATE (ANSI)";
-	case TeradataTypeId::DATE_T:
-		return "DATE (TERADATA)";
 	default:
 		throw NotImplementedException("Unimplemented Teradata type");
 	}
@@ -139,9 +135,6 @@ LogicalType TeradataType::ToDuckDB() const {
 	case TeradataTypeId::FLOAT:
 		// Teradata only supports 8-byte floats (REAL and DOUBLE PRECISION and FLOAT are all the same)
 		return LogicalType::DOUBLE;
-	case TeradataTypeId::DATE_T:
-	case TeradataTypeId::DATE_A:
-		return LogicalType::DATE;
 	case TeradataTypeId::JSON:
 		return LogicalType::JSON();
 	case TeradataTypeId::INTERVAL_HOUR_TO_SECOND:
@@ -240,7 +233,10 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 
 	// Decimal type
 	case LogicalTypeId::DECIMAL: {
-		throw NotImplementedException("Decimal type not yet supported");
+		TeradataType decimal_type = TeradataTypeId::DECIMAL;
+		decimal_type.SetWidth(DecimalType::GetWidth(type));
+		decimal_type.SetScale(DecimalType::GetScale(type));
+		return decimal_type;
 	}
 
 	// Time types
@@ -266,7 +262,7 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 	// Blob
 	case LogicalTypeId::BLOB: {
 		// Since DuckDB types are variable size, set the length to the maximum
-		TeradataType blob_type = TeradataTypeId::BLOB;
+		TeradataType blob_type = TeradataTypeId::VARBYTE;
 		blob_type.SetLength(TeradataType::MAX_TYPE_LENGTH);
 		return blob_type;
 	}

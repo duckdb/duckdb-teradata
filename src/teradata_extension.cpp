@@ -1,7 +1,6 @@
 #define DUCKDB_EXTENSION_MAIN
 
 #include "teradata_extension.hpp"
-#include "teradata_scan.hpp"
 #include "teradata_query.hpp"
 #include "teradata_execute.hpp"
 #include "teradata_storage.hpp"
@@ -63,7 +62,6 @@ void TeradataExtension::Load(DuckDB &db) {
 	auto &instance = *db.instance;
 
 	// Register Teradata functions
-	TeradataScan::Register(instance);
 	TeradataQueryFunction::Register(instance);
 	TeradataExecuteFunction::Register(instance);
 	TeradataClearCacheFunction::Register(instance);

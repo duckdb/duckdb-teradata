@@ -88,9 +88,10 @@ void TeradataConnection::Execute(const string &sql) {
 	ctx.Execute(sql);
 }
 
-void TeradataConnection::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena) {
+void TeradataConnection::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
+                                 vector<unique_ptr<TeradataColumnWriter>> &writers) {
 	TeradataRequestContext ctx(*this);
-	ctx.Execute(sql, chunk, arena);
+	ctx.Execute(sql, chunk, arena, writers);
 }
 
 unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize) {
@@ -109,6 +110,12 @@ unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, boo
 		// Streaming result, pass on the context to the result so we can keep fetching it lazily
 		return make_uniq<StreamingTeradataQueryResult>(std::move(types), std::move(ctx));
 	}
+}
+
+void TeradataConnection::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
+	// TODO: Pool request contexts
+	TeradataRequestContext td_ctx(*this);
+	td_ctx.Prepare(sql, types, names);
 }
 
 } // namespace duckdb
