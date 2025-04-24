@@ -28,7 +28,7 @@ unique_ptr<BaseStatistics> TeradataTableEntry::GetStatistics(ClientContext &cont
 
 TableFunction TeradataTableEntry::GetScanFunction(ClientContext &context, unique_ptr<FunctionData> &bind_data) {
 	auto &td_catalog = catalog.Cast<TeradataCatalog>();
-	auto &transaction = Transaction::Get(context, catalog).Cast<TeradataTransaction>();
+	auto &transaction = TeradataTransaction::Get(context, catalog);
 
 	auto result = make_uniq<TeradataBindData>();
 

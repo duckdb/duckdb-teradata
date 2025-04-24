@@ -84,13 +84,6 @@ unique_ptr<PhysicalOperator> TeradataCatalog::PlanUpdate(ClientContext &context,
 	throw NotImplementedException("TeradataCatalog::PlanUpdate");
 }
 
-unique_ptr<LogicalOperator> TeradataCatalog::BindCreateIndex(Binder &binder, CreateStatement &stmt,
-                                                             TableCatalogEntry &table,
-                                                             unique_ptr<LogicalOperator> plan) {
-
-	throw NotImplementedException("TeradataCatalog::BindCreateIndex");
-}
-
 //----------------------------------------------------------------------------------------------------------------------
 // Metadata
 //----------------------------------------------------------------------------------------------------------------------

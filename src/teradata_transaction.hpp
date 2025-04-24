@@ -36,10 +36,12 @@ public:
 	    string GetDSN();
 	    unique_ptr<PostgresResult> Query(const string &query);
 	    vector<unique_ptr<PostgresResult>> ExecuteQueries(const string &queries);
-	    static PostgresTransaction &Get(ClientContext &context, Catalog &catalog);
+
 
 	    string GetTemporarySchema();
 	 */
+
+	static TeradataTransaction &Get(ClientContext &context, Catalog &catalog);
 
 private:
 	TeradataTransactionState transaction_state;

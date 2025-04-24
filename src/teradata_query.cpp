@@ -38,7 +38,7 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 	}
 
 	auto &td_catalog = catalog.Cast<TeradataCatalog>();
-	auto &transaction = Transaction::Get(context, catalog).Cast<TeradataTransaction>();
+	auto &transaction = TeradataTransaction::Get(context, catalog);
 
 	// Strip any trailing semicolons
 	auto sql = input.inputs[1].GetValue<string>();
@@ -140,8 +140,10 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 				continue;
 			}
 
-			throw InvalidInputException(
-			    "Teradata query schema has changed since bind, please re-execute or re-prepare the query");
+			throw InvalidInputException("Teradata query schema has changed since it was last bound!\n"
+			                            "Column: '%s' expected to be of type '%s' but received '%s'\n"
+			                            "Please re-execute or re-prepare the query",
+			                            data.names[i], expected.ToString(), actual.ToString());
 		}
 	}
 

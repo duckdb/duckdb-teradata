@@ -121,7 +121,7 @@ static string GetTeradataCreateTableSQL(const CreateTableInfo &info) {
 }
 
 optional_ptr<CatalogEntry> TeradataTableSet::CreateTable(ClientContext &context, BoundCreateTableInfo &info) {
-	auto &transaction = TeradataTransaction::Get(context, catalog).Cast<TeradataTransaction>();
+	auto &transaction = TeradataTransaction::Get(context, catalog);
 
 	auto &base = info.Base();
 	const auto create_sql = GetTeradataCreateTableSQL(base);
@@ -135,7 +135,6 @@ optional_ptr<CatalogEntry> TeradataTableSet::CreateTable(ClientContext &context,
 
 void TeradataTableSet::LoadEntries(ClientContext &context) {
 	const auto &td_catalog = catalog.Cast<TeradataCatalog>();
-	auto &td_schema = schema.Cast<TeradataSchemaEntry>();
 
 	auto &conn = td_catalog.GetConnection();
 
@@ -154,7 +153,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	                                      "ON T.TableName = C.TableName AND T.DatabaseName = C.DatabaseName "
 	                                      "WHERE T.DatabaseName = '%s' AND T.TableKind = 'T' "
 	                                      "ORDER BY T.TableName, C.ColumnId",
-	                                      td_schema.name);
+	                                      schema.name);
 
 	/*
 	const auto query = StringUtil::Format("SELECT TableName, ColumnName, ColumnType FROM dbc.ColumnsV "
@@ -165,7 +164,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	const auto result = conn.Query(query, false);
 
 	TeradataTableInfo info;
-	info.schema = td_schema.name;
+	info.schema = schema.name;
 
 	bool skip_table = false;
 
@@ -188,14 +187,14 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 				// We have a new table
 				if (!info.table.empty() && !skip_table) {
 					// Finish the previous table
-					entries[info.table] = make_uniq<TeradataTableEntry>(catalog, td_schema, info);
+					entries[info.table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
 				}
 				skip_table = false;
 
 				// Reset the info
 				info = TeradataTableInfo();
 				info.table = tbl_name.GetString();
-				info.schema = td_schema.name;
+				info.schema = schema.name;
 			}
 
 			// Add the columns
@@ -217,7 +216,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 
 	if (!info.table.empty() && !skip_table) {
 		// Finish the last table
-		entries[info.table] = make_uniq<TeradataTableEntry>(catalog, td_schema, info);
+		entries[info.table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
 	}
 }
 

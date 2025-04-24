@@ -13,4 +13,8 @@ TeradataTransaction::TeradataTransaction(TeradataCatalog &catalog, TransactionMa
 TeradataTransaction::~TeradataTransaction() {
 }
 
+TeradataTransaction &TeradataTransaction::Get(ClientContext &context, Catalog &catalog) {
+	return Transaction::Get(context, catalog).Cast<TeradataTransaction>();
+}
+
 } // namespace duckdb

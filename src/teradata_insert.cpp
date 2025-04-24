@@ -132,7 +132,7 @@ unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &co
 
 	// Prepare just to see that we type check
 	// TODO: We should type check the statement somehow...
-	// auto &transaction = TeradataTransaction::Get(context, insert_table->catalog).Cast<TeradataTransaction>();
+	// auto &transaction = TeradataTransaction::Get(context, insert_table->catalog);
 	// auto &conn = transaction.GetConnection();
 
 	auto result = make_uniq<TeradataInsertGlobalState>(context);
@@ -157,7 +157,7 @@ SinkResultType TeradataInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 
 	// Sink into the Teradata table
 	auto &state = sink_state->Cast<TeradataInsertGlobalState>();
-	auto &transaction = TeradataTransaction::Get(context.client, state.table->catalog).Cast<TeradataTransaction>();
+	auto &transaction = TeradataTransaction::Get(context.client, state.table->catalog);
 	auto &conn = transaction.GetConnection();
 
 	// Reset the arena before executing the query

@@ -3,6 +3,7 @@
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 
 #include "teradata_table_set.hpp"
+#include "teradata_index_set.hpp"
 
 namespace duckdb {
 
@@ -34,6 +35,7 @@ public:
 
 private:
 	TeradataTableSet tables;
+	TeradataIndexSet indexes;
 };
 
 } // namespace duckdb

@@ -459,10 +459,12 @@ uint16_t TeradataRequestContext::FetchParcel() {
 		// Try to detect some common error codes
 		switch (code) {
 		case 2801:
+		case 2802:
+		case 2803:
 			throw ConstraintException(string(msg, msg_len));
 		default:
-			throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code,
-						string(msg, msg_len));
+			throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info,
+			                  code, string(msg, msg_len));
 		}
 	}
 
