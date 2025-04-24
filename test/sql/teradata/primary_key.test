@@ -1,0 +1,44 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+attach '${TD_LOGON}' as td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+# Drop table if already exists
+statement ok
+DROP TABLE IF EXISTS td.test_table;
+
+# Create a test table
+
+statement ok
+CREATE TABLE td.test_table(id INT PRIMARY KEY, name VARCHAR);
+
+statement ok
+INSERT INTO td.test_table VALUES (0, 'zero');
+
+statement ok
+INSERT INTO td.test_table VALUES (1, 'one');
+
+query II
+SELECT * FROM td.test_table ORDER BY ALL;
+----
+0	zero
+1	one
+
+statement error
+INSERT INTO td.test_table VALUES (1, 'two');
+----
+Constraint Error: Duplicate unique prime key error in duckdb_testdb.test_table.
+
+
+# clean up
+statement ok
+DROP TABLE IF EXISTS td.test_table;

@@ -81,7 +81,7 @@ static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<u
 		}
 		if (is_single_key_pk) {
 			// single column pk: insert constraint here
-			ss << " PRIMARY KEY";
+			ss << " PRIMARY KEY NOT NULL";
 		}
 		if (is_unique) {
 			// single column unique: insert constraint here

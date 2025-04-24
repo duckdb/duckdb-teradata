@@ -16,6 +16,9 @@ attach '${TD_LOGON}' as td (TYPE TERADATA, DATABASE '${TD_DB}');
 statement ok
 DROP TABLE IF EXISTS td.filter_pushdown_test;
 
+statement ok
+DROP TABLE IF EXISTS td.filter_pushdown_blob;
+
 # Create a test table
 statement ok
 CREATE TABLE td.filter_pushdown_test AS SELECT i FROM range(5) r(i);
@@ -128,4 +131,7 @@ SELECT * FROM td.filter_pushdown_blob WHERE b = '000102030405060708090A0B0C0D0E0
 
 # clean up
 statement ok
-DROP TABLE IF EXISTS td.test_table;
+DROP TABLE IF EXISTS td.filter_pushdown_blob;
+
+statement ok
+DROP TABLE IF EXISTS td.filter_pushdown_test;

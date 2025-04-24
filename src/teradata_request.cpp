@@ -456,8 +456,14 @@ uint16_t TeradataRequestContext::FetchParcel() {
 		const auto msg_len = reader.Read<uint16_t>();
 		const auto msg = reader.ReadBytes(msg_len);
 
-		throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code,
-		                  string(msg, msg_len));
+		// Try to detect some common error codes
+		switch (code) {
+		case 2801:
+			throw ConstraintException(string(msg, msg_len));
+		default:
+			throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code,
+						string(msg, msg_len));
+		}
 	}
 
 	return dbc.fet_parcel_flavor;
