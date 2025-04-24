@@ -575,7 +575,8 @@ void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	// Set max decimal return width
 	dbc.max_decimal_returned = 38;
 
-	dbc.date_form = 'T'; // date format
+	// Set the return date format
+	dbc.date_form = 'T';
 
 	// Initialize request
 	int32_t result = EM_OK;

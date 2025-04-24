@@ -1,0 +1,37 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+
+# Drop table if it exists
+statement ok
+DROP TABLE IF EXISTS td.test_timestamp;
+
+# Create test table
+statement ok
+CREATE TABLE td.test_timestamp (
+  t TIMESTAMP
+);
+
+# Insert test data
+statement ok
+INSERT INTO td.test_timestamp (t) VALUES (TIMESTAMP '2000-08-25 10:14:59')
+# Select data from test table
+query I
+SELECT t FROM td.test_timestamp ORDER BY ALL;
+----
+2000-08-25 10:14:59
+
+# clean up
+statement ok
+DROP TABLE IF EXISTS td.test_timestamp;

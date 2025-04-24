@@ -23,9 +23,9 @@ string TeradataType::ToString() const {
 	case TeradataTypeId::DATE:
 		return "DATE";
 	case TeradataTypeId::TIME:
-		return "TIME";
+		return "TIME(0)"; // Zero precision is default
 	case TeradataTypeId::TIMESTAMP:
-		return "TIMESTAMP";
+		return "TIMESTAMP(0)"; // Zero precision is default
 	case TeradataTypeId::TIME_TZ:
 		return "TIME_TZ";
 	case TeradataTypeId::TIMESTAMP_TZ:

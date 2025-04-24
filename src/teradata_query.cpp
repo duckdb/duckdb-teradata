@@ -89,6 +89,7 @@ static BindInfo TeradataQueryBindInfo(const optional_ptr<FunctionData> bind_data
 //----------------------------------------------------------------------------------------------------------------------
 struct TeradataQueryState final : GlobalTableFunctionState {
 	unique_ptr<TeradataQueryResult> td_query;
+	DataChunk scan_chunk;
 };
 
 static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &context, TableFunctionInitInput &input) {
@@ -123,11 +124,29 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 
 	for (idx_t i = 0; i < td_types.size(); i++) {
 		// Compare the types of the query with the types we got during binding
-		if (td_types[i] != data.td_types[i]) {
+		auto &expected = data.td_types[i];
+		auto &actual = td_types[i];
+
+		if (actual != expected) {
+			if (expected.GetId() == TeradataTypeId::TIMESTAMP && actual.GetId() == TeradataTypeId::CHAR &&
+			    actual.GetLength() == 19) {
+				// Special case, this gets cast later
+				continue;
+			}
+
+			if (expected.GetId() == TeradataTypeId::TIME && actual.GetId() == TeradataTypeId::CHAR &&
+			    actual.GetLength() == 8) {
+				// Special case, this gets cast later
+				continue;
+			}
+
 			throw InvalidInputException(
 			    "Teradata query schema has changed since bind, please re-execute or re-prepare the query");
 		}
 	}
+
+	// Initialize the scan chunk
+	result->td_query->InitScanChunk(result->scan_chunk);
 
 	return std::move(result);
 }
@@ -139,7 +158,22 @@ static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, 
 	auto &state = data.global_state->Cast<TeradataQueryState>();
 
 	// Scan the query result.
-	state.td_query->Scan(output);
+	state.td_query->Scan(state.scan_chunk);
+
+	// Get the scan count
+	const auto count = state.scan_chunk.size();
+
+	// Cast all vectors
+	// For most types, this is a no-op, the target just references the source.
+	// But there are some special cases, like TIMESTAMP that always gets transmitted as VARCHAR.
+	for (idx_t col_idx = 0; col_idx < state.scan_chunk.ColumnCount(); col_idx++) {
+		auto &source = state.scan_chunk.data[col_idx];
+		auto &target = output.data[col_idx];
+
+		VectorOperations::DefaultCast(source, target, count);
+	}
+
+	output.SetCardinality(count);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

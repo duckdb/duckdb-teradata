@@ -57,10 +57,9 @@ public:
 	virtual bool IsMaterialized() const = 0;
 
 	// Get the types of the result set
-	const vector<TeradataType> &GetTypes() const {
+	vector<TeradataType> &GetTypes() {
 		return types;
 	}
-
 	// Consumes this result, returning the next chunk of data
 	// Returns false if there is no more data to fetch
 	virtual bool Scan(DataChunk &chunk) = 0;

@@ -207,7 +207,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 
 				const auto duck_type = td_type.ToDuckDB();
 				info.columns.AddColumn(ColumnDefinition(col_name.GetString(), duck_type));
-				info.teradata_types.push_back(std::move(td_type));
+				info.teradata_types.push_back(td_type);
 			} catch (...) {
 				// Ignore the column type (and this table) for now, just make this work
 				skip_table = true;
