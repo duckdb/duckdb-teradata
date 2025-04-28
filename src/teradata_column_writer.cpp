@@ -1,5 +1,7 @@
 #include "teradata_column_writer.hpp"
 
+#include <duckdb/common/types/time.hpp>
+
 namespace duckdb {
 
 void TeradataColumnWriter::SetPresenceBits(idx_t count, idx_t col_idx, idx_t col_count, char *records[]) const {
@@ -157,6 +159,56 @@ public:
 	}
 };
 
+class TeradataTimestampWriter final : public TeradataColumnWriterBase<TeradataTimestampWriter> {
+public:
+	static constexpr auto ZERO_PREC_TIMESTAMP_SIZE = 19;
+	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+		return ZERO_PREC_TIMESTAMP_SIZE;
+	}
+
+	// TODO: Deal with character encoding/conversion here
+	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
+		const auto row_idx = format.sel->get_index(out_idx);
+		if (format.validity.RowIsValid(row_idx)) {
+			const auto &ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+			const auto str = Timestamp::ToString(ts);
+
+			if (str.size() != ZERO_PREC_TIMESTAMP_SIZE) {
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", str);
+			}
+
+			memcpy(result, str.c_str(), str.size());
+		}
+
+		result += ZERO_PREC_TIMESTAMP_SIZE;
+	}
+};
+
+class TeradataTimeWriter final : public TeradataColumnWriterBase<TeradataTimeWriter> {
+public:
+	static constexpr auto ZERO_PREC_TIME_SIZE = 8;
+	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+		return ZERO_PREC_TIME_SIZE;
+	}
+
+	// TODO: Deal with character encoding/conversion here
+	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
+		const auto row_idx = format.sel->get_index(out_idx);
+		if (format.validity.RowIsValid(row_idx)) {
+			const auto &ts = UnifiedVectorFormat::GetData<dtime_t>(format)[row_idx];
+			const auto str = Time::ToString(ts);
+
+			if (str.size() != ZERO_PREC_TIME_SIZE) {
+				throw InvalidInputException("Teradata time: '%s' is not in the expected format", str);
+			}
+
+			memcpy(result, str.c_str(), str.size());
+		}
+
+		result += ZERO_PREC_TIME_SIZE;
+	}
+};
+
 //----------------------------------------------------------------------------------------------------------------------
 // Constructor
 //----------------------------------------------------------------------------------------------------------------------
@@ -199,6 +251,10 @@ unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &t
 	}
 	case LogicalTypeId::DATE:
 		return make_uniq_base<TeradataColumnWriter, TeradataDateWriter>();
+	case LogicalTypeId::TIME:
+		return make_uniq_base<TeradataColumnWriter, TeradataTimeWriter>();
+	case LogicalTypeId::TIMESTAMP:
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>();
 	default:
 		throw NotImplementedException("TeradataColumnWriter::Make: type %s not supported", type.ToString());
 	}

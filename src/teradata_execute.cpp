@@ -49,7 +49,7 @@ static void Execute(ClientContext &context, TableFunctionInput &data_p, DataChun
 		return;
 	}
 
-	const auto &transaction = Transaction::Get(context, data.td_catalog).Cast<TeradataTransaction>();
+	const auto &transaction = TeradataTransaction::Get(context, data.td_catalog);
 	transaction.GetConnection().Execute(data.query);
 	data.finished = true;
 }

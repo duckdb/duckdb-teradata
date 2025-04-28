@@ -2,13 +2,12 @@
 #include "teradata_table_entry.hpp"
 
 #include "duckdb/parser/parsed_data/drop_info.hpp"
-
-#include <duckdb/planner/parsed_data/bound_create_table_info.hpp>
+#include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 
 namespace duckdb {
 
 TeradataSchemaEntry::TeradataSchemaEntry(Catalog &catalog, CreateSchemaInfo &info)
-    : SchemaCatalogEntry(catalog, info), tables(*this) {
+    : SchemaCatalogEntry(catalog, info), tables(*this), indexes(*this) {
 }
 
 void TeradataSchemaEntry::Scan(CatalogType type, const std::function<void(CatalogEntry &)> &callback) {
@@ -21,6 +20,8 @@ void TeradataSchemaEntry::Scan(ClientContext &context, CatalogType type,
 	case CatalogType::TABLE_ENTRY:
 		tables.Scan(context, [&](CatalogEntry &schema) { callback(schema.Cast<TeradataTableEntry>()); });
 		break;
+	case CatalogType::INDEX_ENTRY:
+		indexes.Scan(context, [&](CatalogEntry &schema) { callback(schema.Cast<TeradataIndexEntry>()); });
 	default:
 		break; // throw InternalException("Type not supported for TeradataSchemaEntry::Scan");
 	}
@@ -28,7 +29,8 @@ void TeradataSchemaEntry::Scan(ClientContext &context, CatalogType type,
 
 optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateIndex(CatalogTransaction transaction, CreateIndexInfo &info,
                                                             TableCatalogEntry &table) {
-	throw NotImplementedException("TeradataSchemaEntry::CreateIndex");
+
+	return indexes.CreateIndex(transaction.GetContext(), info, table);
 }
 
 optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateFunction(CatalogTransaction transaction,

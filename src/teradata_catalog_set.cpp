@@ -61,7 +61,7 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	}
 
 	// Execute the drop query
-	const auto &transaction = TeradataTransaction::Get(context, catalog).Cast<TeradataTransaction>();
+	const auto &transaction = TeradataTransaction::Get(context, catalog);
 	auto &conn = transaction.GetConnection();
 
 	conn.Execute(drop_query);

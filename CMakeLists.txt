@@ -28,6 +28,9 @@ set(EXTENSION_SOURCES
     src/teradata_catalog_set.cpp
     src/teradata_table_set.cpp
     src/teradata_table_entry.cpp
+    src/teradata_index.cpp
+    src/teradata_index_set.cpp
+    src/teradata_index_entry.cpp
     src/teradata_type.cpp
     src/teradata_execute.cpp
     src/teradata_clear_cache.cpp

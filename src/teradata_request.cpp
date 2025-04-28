@@ -456,8 +456,16 @@ uint16_t TeradataRequestContext::FetchParcel() {
 		const auto msg_len = reader.Read<uint16_t>();
 		const auto msg = reader.ReadBytes(msg_len);
 
-		throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info, code,
-		                  string(msg, msg_len));
+		// Try to detect some common error codes
+		switch (code) {
+		case 2801:
+		case 2802:
+		case 2803:
+			throw ConstraintException(string(msg, msg_len));
+		default:
+			throw IOException("Teradata request failed, stmt_no: %d, info: %d, code: %d, msg: '%s'", stmt_no, info,
+			                  code, string(msg, msg_len));
+		}
 	}
 
 	return dbc.fet_parcel_flavor;
@@ -575,7 +583,8 @@ void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	// Set max decimal return width
 	dbc.max_decimal_returned = 38;
 
-	dbc.date_form = 'T'; // date format
+	// Set the return date format
+	dbc.date_form = 'T';
 
 	// Initialize request
 	int32_t result = EM_OK;
