@@ -79,7 +79,7 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 
 	// Second pass, set the presence bits
 	for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-		writers[col_idx]->SetPresenceBits(row_count, col_idx, col_count, record_array);
+		writers[col_idx]->SetPresenceBits(row_count, col_idx, record_array);
 	}
 
 	// Now, third pass, actually write the rows

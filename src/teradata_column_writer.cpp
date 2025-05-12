@@ -6,7 +6,12 @@
 
 namespace duckdb {
 
-void TeradataColumnWriter::SetPresenceBits(idx_t count, idx_t col_idx, idx_t col_count, char *records[]) const {
+
+//----------------------------------------------------------------------------------------------------------------------
+// Teradata Column Writer
+//----------------------------------------------------------------------------------------------------------------------
+
+void TeradataColumnWriter::SetPresenceBits(idx_t count, idx_t col_idx, char *records[]) const {
 	const auto byte_idx = col_idx / 8;
 	const auto bit_idx = (7 - (col_idx % 8));
 
@@ -16,61 +21,78 @@ void TeradataColumnWriter::SetPresenceBits(idx_t count, idx_t col_idx, idx_t col
 		// Set the presence bit
 		if (!format.validity.RowIsValid(row_idx)) {
 			auto &validity_byte = records[out_idx][byte_idx];
-			validity_byte |= 1 << bit_idx;
+			validity_byte |= static_cast<char>(1) << bit_idx;
 		}
 	}
 }
 
-template <class IMPL>
-class TeradataColumnWriterBase : public TeradataColumnWriter {
+//----------------------------------------------------------------------------------------------------------------------
+// Helper alias
+//----------------------------------------------------------------------------------------------------------------------
+
+template<class T>
+using const_optional_ptr = optional_ptr<const T>;
+
+//----------------------------------------------------------------------------------------------------------------------
+// Typed Column Writer Helper Class
+//----------------------------------------------------------------------------------------------------------------------
+
+template<class T>
+class TypedColumnWriter : public TeradataColumnWriter {
 public:
+
 	void ComputeSizes(idx_t count, int32_t lengths[]) override {
+		auto data_ptr = UnifiedVectorFormat::GetData<T>(format);
+
 		for (idx_t out_idx = 0; out_idx < count; out_idx++) {
-			// TODO: check that length doesnt overflow
-			lengths[out_idx] += static_cast<IMPL *>(this)->GetSize(format, out_idx);
+			const auto row_idx = format.sel->get_index(out_idx);
+			const auto is_valid = format.validity.RowIsValid(row_idx);
+
+			if (is_valid) {
+				lengths[out_idx] += Reserve(&data_ptr[row_idx]);
+			} else {
+				lengths[out_idx] += Reserve(nullptr);
+			}
 		}
 	}
 
 	void EncodeVector(idx_t count, char *records[]) override {
+		auto data_ptr = UnifiedVectorFormat::GetData<T>(format);
+
 		for (idx_t out_idx = 0; out_idx < count; out_idx++) {
-			static_cast<IMPL *>(this)->Encode(format, out_idx, records[out_idx]);
+			const auto row_idx = format.sel->get_index(out_idx);
+			const auto is_valid = format.validity.RowIsValid(row_idx);
+
+			if (is_valid) {
+				Encode(&data_ptr[row_idx], records[out_idx]);
+			} else {
+				Encode(nullptr, records[out_idx]);
+			}
 		}
 	}
 
-protected:
-	// Needs to be implemented by the derived class
-	virtual idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) = 0;
-	virtual void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) = 0;
+	virtual int32_t Reserve(const_optional_ptr<T> value) = 0;
+	virtual void Encode(const_optional_ptr<T> value, char* &result) = 0;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
-// Types Writers
+// Column Writers
 //----------------------------------------------------------------------------------------------------------------------
 
-class TeradataVarcharWriter final : public TeradataColumnWriterBase<TeradataVarcharWriter> {
+class TeradataVarcharWriter final : public TypedColumnWriter<string_t> {
 public:
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto &str = UnifiedVectorFormat::GetData<string_t>(format)[row_idx];
-			const auto len = str.GetSize();
-			return sizeof(uint16_t) + len;
-		}
-		// We always write a length, even if null
-		return sizeof(uint16_t);
+	int32_t Reserve(const_optional_ptr<string_t> value) override {
+		return sizeof(uint16_t) + (value ? value->GetSize() : 0);
 	}
 
 	// TODO: Deal with character encoding/conversion here
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto &str = UnifiedVectorFormat::GetData<string_t>(format)[row_idx];
-			const auto len = str.GetSize();
-
+	void Encode(const_optional_ptr<string_t> value, char *&result) override {
+		if (value) {
+			const auto len = value->GetSize();
 			memcpy(result, &len, sizeof(uint16_t));
 			result += sizeof(uint16_t);
 
-			memcpy(result, str.GetDataUnsafe(), len);
+			memcpy(result, value->GetDataUnsafe(), len);
 			result += len;
 		} else {
 			constexpr auto zero_length = 0;
@@ -80,29 +102,19 @@ public:
 	}
 };
 
-class TeradataBlobWriter final : public TeradataColumnWriterBase<TeradataBlobWriter> {
+class TeradataBlobWriter final : public TypedColumnWriter<string_t> {
 public:
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto &str = UnifiedVectorFormat::GetData<string_t>(format)[row_idx];
-			const auto len = str.GetSize();
-			return sizeof(uint16_t) + len;
-		}
-		// We always write a length, even if null
-		return sizeof(uint16_t);
+	int32_t Reserve(const_optional_ptr<string_t> value) override {
+		return sizeof(uint16_t) + (value ? value->GetSize() : 0);
 	}
 
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto &str = UnifiedVectorFormat::GetData<string_t>(format)[row_idx];
-			const auto len = str.GetSize();
-
+	void Encode(const_optional_ptr<string_t> value, char *&result) override {
+		if (value) {
+			const auto len = value->GetSize();
 			memcpy(result, &len, sizeof(uint16_t));
 			result += sizeof(uint16_t);
 
-			memcpy(result, str.GetDataUnsafe(), len);
+			memcpy(result, value->GetDataUnsafe(), len);
 			result += len;
 		} else {
 			constexpr auto zero_length = 0;
@@ -112,45 +124,40 @@ public:
 	}
 };
 
-template <class SRC, class DST = SRC>
-class TeradataFixedSizeWriter final : public TeradataColumnWriterBase<TeradataFixedSizeWriter<SRC, DST>> {
+template<class SOURCE, class TARGET = SOURCE>
+class TeradataFixedSizeWriter final : public TypedColumnWriter<SOURCE> {
 public:
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		return sizeof(DST);
+	int32_t Reserve(const_optional_ptr<SOURCE> value) override {
+		return sizeof(TARGET);
 	}
 
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto src = UnifiedVectorFormat::GetData<SRC>(format)[row_idx];
+	void Encode(const_optional_ptr<SOURCE> value, char *&result) override {
+		if (value) {
+			const auto src = *value;
+			const auto dst = static_cast<TARGET>(src);
 
 			// We have to memcpy here to avoid alignment issues
-			const DST dst = static_cast<DST>(src);
-			memcpy(result, &dst, sizeof(DST));
+			memcpy(result, &dst, sizeof(TARGET));
 		}
 
-		result += sizeof(DST);
+		result += sizeof(TARGET);
 	}
 };
 
-class TeradataDateWriter final : public TeradataColumnWriterBase<TeradataDateWriter> {
+class TeradataDateWriter final : public TypedColumnWriter<date_t> {
 public:
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+	int32_t Reserve(const_optional_ptr<date_t> value) override {
 		return sizeof(int32_t);
 	}
 
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto duck_date = UnifiedVectorFormat::GetData<date_t>(format)[row_idx];
+	void Encode(const_optional_ptr<date_t> value, char *&result) override {
+		if (value) {
 
 			int32_t year = 0;
 			int32_t month = 0;
 			int32_t day = 0;
 
-			Date::Convert(duck_date, year, month, day);
+			Date::Convert(*value, year, month, day);
 
 			const auto td_date = (year - 1900) * 10000 + month * 100 + day;
 
@@ -161,99 +168,86 @@ public:
 	}
 };
 
-class TeradataTimestampTzWriter final : public TeradataColumnWriterBase<TeradataTimestampTzWriter> {
+class TeradataTimestampTZWriter final : public TypedColumnWriter<timestamp_t> {
 public:
 	static constexpr auto CHAR_SIZE = 32;
 
-	TeradataTimestampTzWriter() {
+	TeradataTimestampTZWriter() {
 		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f+00:00", time_format);
 	}
 
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto &ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+	int32_t Reserve(const_optional_ptr<timestamp_t> value) override {
+		return CHAR_SIZE;
+	}
 
-			const auto date = Timestamp::GetDate(ts);
-			const auto time = Timestamp::GetTime(ts);
+	void Encode(const_optional_ptr<timestamp_t> value, char *&result) override {
+		if (value) {
+			const auto date = Timestamp::GetDate(*value);
+			const auto time = Timestamp::GetTime(*value);
 
-			// Subtract one for the null terminator
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
-				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(*value));
 			}
 
-			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
 			time_format.FormatString(date, time, result);
 		}
 
 		result += CHAR_SIZE;
 	}
-
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		return CHAR_SIZE;
-	}
-
 private:
 	StrfTimeFormat time_format;
 };
 
-class TeradataTimestampUSWriter final : public TeradataColumnWriterBase<TeradataTimestampUSWriter> {
+class TeradataTimestampUSWriter final : public TypedColumnWriter<timestamp_t> {
 public:
 	static constexpr auto CHAR_SIZE = 26;
 
-	explicit TeradataTimestampUSWriter() {
+	TeradataTimestampUSWriter() {
 		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f", time_format);
 	}
 
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto &ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+	int32_t Reserve(const_optional_ptr<timestamp_t> value) override {
+		return CHAR_SIZE;
+	}
 
-			const auto date = Timestamp::GetDate(ts);
-			const auto time = Timestamp::GetTime(ts);
+	void Encode(const_optional_ptr<timestamp_t> value, char *&result) override {
+		if (value) {
+			const auto date = Timestamp::GetDate(*value);
+			const auto time = Timestamp::GetTime(*value);
 
-			// Subtract one for the null terminator
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
-				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(*value));
 			}
 
-			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
 			time_format.FormatString(date, time, result);
 		}
 
 		result += CHAR_SIZE;
 	}
 
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		return CHAR_SIZE;
-	}
-
 private:
 	StrfTimeFormat time_format;
 };
 
-class TeradataTimestampMSWriter final : public TeradataColumnWriterBase<TeradataTimestampMSWriter> {
+class TeradataTimestampMSWriter final : public TypedColumnWriter<timestamp_t> {
 public:
 	static constexpr auto CHAR_SIZE = 23;
 
 	TeradataTimestampMSWriter() {
-		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%g", time_format);
+	 	StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%g", time_format);
 	}
 
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+	int32_t Reserve(const_optional_ptr<timestamp_t> value) override {
 		return CHAR_SIZE;
 	}
 
-	// TODO: Deal with character encoding/conversion here
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			auto ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+	void Encode(const_optional_ptr<timestamp_t> value, char *&result) override {
+		if (value) {
+			auto ts = *value;
 
 			if (Timestamp::IsFinite(ts)) {
 				ts = Timestamp::FromEpochMs(ts.value);
@@ -261,15 +255,12 @@ public:
 
 			const auto date = Timestamp::GetDate(ts);
 			const auto time = Timestamp::GetTime(ts);
-
-			// Subtract one for the null terminator
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
 				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
 			}
 
-			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
 			time_format.FormatString(date, time, result);
 		}
 
@@ -280,7 +271,7 @@ private:
 	StrfTimeFormat time_format;
 };
 
-class TeradataTimestampSecWriter final : public TeradataColumnWriterBase<TeradataTimestampSecWriter> {
+class TeradataTimestampSecWriter final : public TypedColumnWriter<timestamp_t> {
 public:
 	static constexpr auto CHAR_SIZE = 19;
 
@@ -288,14 +279,13 @@ public:
 		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S", time_format);
 	}
 
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+	int32_t Reserve(const_optional_ptr<timestamp_t> value) override {
 		return CHAR_SIZE;
 	}
 
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			auto ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+	void Encode(const_optional_ptr<timestamp_t> value, char *&result) override {
+		if (value) {
+			auto ts = *value;
 
 			if (Timestamp::IsFinite(ts)) {
 				ts = Timestamp::FromEpochSeconds(ts.value);
@@ -304,14 +294,12 @@ public:
 			const auto date = Timestamp::GetDate(ts);
 			const auto time = Timestamp::GetTime(ts);
 
-			// Subtract one for the null terminator
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
 				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
 			}
 
-			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
 			time_format.FormatString(date, time, result);
 		}
 
@@ -322,30 +310,29 @@ private:
 	StrfTimeFormat time_format;
 };
 
-class TeradataTimeWriter final : public TeradataColumnWriterBase<TeradataTimeWriter> {
-public:
-	static constexpr auto ZERO_PREC_TIME_SIZE = 8;
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		return ZERO_PREC_TIME_SIZE;
-	}
+ class TeradataTimeWriter final : public TypedColumnWriter<dtime_t> {
+ public:
+ 	static constexpr auto CHAR_SIZE = 8;
 
-	// TODO: Deal with character encoding/conversion here
-	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
-		const auto row_idx = format.sel->get_index(out_idx);
-		if (format.validity.RowIsValid(row_idx)) {
-			const auto &ts = UnifiedVectorFormat::GetData<dtime_t>(format)[row_idx];
-			const auto str = Time::ToString(ts);
+ 	int32_t Reserve(const_optional_ptr<dtime_t> value) override {
+ 		return CHAR_SIZE;
+ 	}
 
-			if (str.size() != ZERO_PREC_TIME_SIZE) {
-				throw InvalidInputException("Teradata time: '%s' is not in the expected format", str);
-			}
+ 	void Encode(const_optional_ptr<dtime_t> value, char *&result) override {
+ 		if (value) {
+ 			const auto &ds = *value;
+ 			auto str = Time::ToString(ds);
 
-			memcpy(result, str.c_str(), str.size());
-		}
+ 			if (str.size() != CHAR_SIZE) {
+ 				throw InvalidInputException("Teradata time: '%s' is not in the expected format", str);
+ 			}
 
-		result += ZERO_PREC_TIME_SIZE;
-	}
-};
+ 			memcpy(result, str.c_str(), str.size());
+ 		}
+ 		result += CHAR_SIZE;
+ 	}
+ };
+
 
 //----------------------------------------------------------------------------------------------------------------------
 // Constructor
@@ -398,10 +385,11 @@ unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &t
 	case LogicalTypeId::TIMESTAMP:
 		return make_uniq_base<TeradataColumnWriter, TeradataTimestampUSWriter>();
 	case LogicalTypeId::TIMESTAMP_TZ:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampTzWriter>();
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampTZWriter>();
 	default:
 		throw NotImplementedException("TeradataColumnWriter::Make: type %s not supported", type.ToString());
 	}
 }
+
 
 } // namespace duckdb

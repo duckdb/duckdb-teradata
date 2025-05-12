@@ -12,7 +12,6 @@ require-env TD_DB
 statement ok
 ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
 
-
 # Drop table if it exists
 statement ok
 DROP TABLE IF EXISTS td.test_timestamp;
