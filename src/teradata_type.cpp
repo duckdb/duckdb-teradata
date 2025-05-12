@@ -25,11 +25,11 @@ string TeradataType::ToString() const {
 	case TeradataTypeId::TIME:
 		return "TIME(0)"; // Zero precision is default
 	case TeradataTypeId::TIMESTAMP:
-		return "TIMESTAMP(0)"; // Zero precision is default
+		return "TIMESTAMP(" + to_string(width) + ")";
 	case TeradataTypeId::TIME_TZ:
 		return "TIME_TZ";
 	case TeradataTypeId::TIMESTAMP_TZ:
-		return "TIMESTAMP_TZ";
+		return "TIMESTAMP(" + to_string(width) + ") WITH TIME ZONE";
 	case TeradataTypeId::ST_GEOMETRY:
 		return "ST_GEOMETRY";
 	case TeradataTypeId::MBR:
@@ -116,7 +116,21 @@ LogicalType TeradataType::ToDuckDB() const {
 	case TeradataTypeId::TIME:
 		return LogicalType::TIME;
 	case TeradataTypeId::TIMESTAMP:
-		return LogicalType::TIMESTAMP;
+		// Round to closest duckdb precision
+		switch (width) {
+		// Seconds
+		case 0: return LogicalType::TIMESTAMP_S;
+		// Milliseconds
+		case 1: return LogicalType::TIMESTAMP_MS;
+		case 2: return LogicalType::TIMESTAMP_MS;
+		case 3: return LogicalType::TIMESTAMP_MS;
+		// Microseconds
+		case 4: return LogicalType::TIMESTAMP;
+		case 5: return LogicalType::TIMESTAMP;
+		case 6: return LogicalType::TIMESTAMP;
+		default:
+			throw NotImplementedException("Unimplemented Teradata type");
+		}
 	case TeradataTypeId::TIME_TZ:
 		return LogicalType::TIME_TZ;
 	case TeradataTypeId::TIMESTAMP_TZ:
@@ -230,7 +244,6 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 	case LogicalTypeId::DOUBLE: {
 		return TeradataTypeId::FLOAT;
 	}
-
 	// Decimal type
 	case LogicalTypeId::DECIMAL: {
 		TeradataType decimal_type = TeradataTypeId::DECIMAL;
@@ -238,18 +251,34 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 		decimal_type.SetScale(DecimalType::GetScale(type));
 		return decimal_type;
 	}
-
 	// Time types
-	case LogicalTypeId::TIMESTAMP:
-		return TeradataTypeId::TIMESTAMP;
+	case LogicalTypeId::TIMESTAMP_SEC: {
+		TeradataType ts_type = TeradataTypeId::TIMESTAMP;
+		ts_type.SetWidth(0);
+		return ts_type;
+	}
+	case LogicalTypeId::TIMESTAMP_MS: {
+		TeradataType ts_type = TeradataTypeId::TIMESTAMP;
+		ts_type.SetWidth(3);
+		return ts_type;
+	}
+	case LogicalTypeId::TIMESTAMP: {
+		TeradataType ts_type = TeradataTypeId::TIMESTAMP;
+		// Microseconds
+		ts_type.SetWidth(6);
+		return ts_type;
+	}
+	case LogicalTypeId::TIMESTAMP_TZ: {
+		TeradataType ts_type = TeradataTypeId::TIMESTAMP_TZ;
+		ts_type.SetWidth(6);
+		return ts_type;
+	}
 	case LogicalTypeId::DATE:
 		return TeradataTypeId::DATE;
 	case LogicalTypeId::TIME:
 		return TeradataTypeId::TIME;
 	case LogicalTypeId::TIME_TZ:
 		return TeradataTypeId::TIME_TZ;
-	case LogicalTypeId::TIMESTAMP_TZ:
-		return TeradataTypeId::TIMESTAMP_TZ;
 
 	// Varchar
 	case LogicalTypeId::VARCHAR: {

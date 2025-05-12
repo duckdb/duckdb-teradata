@@ -1,5 +1,7 @@
 #include "teradata_column_writer.hpp"
 
+#include "duckdb/function/scalar/strftime_format.hpp"
+
 #include <duckdb/common/types/time.hpp>
 
 namespace duckdb {
@@ -161,9 +163,35 @@ public:
 
 class TeradataTimestampWriter final : public TeradataColumnWriterBase<TeradataTimestampWriter> {
 public:
-	static constexpr auto ZERO_PREC_TIMESTAMP_SIZE = 19;
+
+	StrfTimeFormat time_format;
+	idx_t size;
+
+	explicit TeradataTimestampWriter(LogicalTypeId id) {
+		switch (id) {
+		case LogicalTypeId::TIMESTAMP_SEC:
+			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S", time_format);
+			size = 19;
+			break;
+		case LogicalTypeId::TIMESTAMP_MS:
+			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%g", time_format);
+			size = 23;
+			break;
+		case LogicalTypeId::TIMESTAMP:
+			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f", time_format);
+			size = 26;
+			break;
+		case LogicalTypeId::TIMESTAMP_TZ:
+			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f+00:00", time_format);
+			size = 32;
+			break;
+		default:
+			throw NotImplementedException("Unknown LogicalTypeId");
+		}
+	}
+
 	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		return ZERO_PREC_TIMESTAMP_SIZE;
+		return size;
 	}
 
 	// TODO: Deal with character encoding/conversion here
@@ -171,16 +199,22 @@ public:
 		const auto row_idx = format.sel->get_index(out_idx);
 		if (format.validity.RowIsValid(row_idx)) {
 			const auto &ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
-			const auto str = Timestamp::ToString(ts);
 
-			if (str.size() != ZERO_PREC_TIMESTAMP_SIZE) {
-				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", str);
+			const auto date = Timestamp::GetDate(ts);
+			const auto time = Timestamp::GetTime(ts);
+
+			// Subtract one for the null terminator
+			const auto len = time_format.GetLength(date, time, 0, nullptr);
+
+			if (len != size) {
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
 			}
 
-			memcpy(result, str.c_str(), str.size());
+			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
+			time_format.FormatString(date, time, result);
 		}
 
-		result += ZERO_PREC_TIMESTAMP_SIZE;
+		result += size;
 	}
 };
 
@@ -253,8 +287,14 @@ unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &t
 		return make_uniq_base<TeradataColumnWriter, TeradataDateWriter>();
 	case LogicalTypeId::TIME:
 		return make_uniq_base<TeradataColumnWriter, TeradataTimeWriter>();
+	case LogicalTypeId::TIMESTAMP_SEC:
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
+	case LogicalTypeId::TIMESTAMP_MS:
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
 	case LogicalTypeId::TIMESTAMP:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>();
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
+	case LogicalTypeId::TIMESTAMP_TZ:
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
 	default:
 		throw NotImplementedException("TeradataColumnWriter::Make: type %s not supported", type.ToString());
 	}

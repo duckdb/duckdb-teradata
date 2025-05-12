@@ -128,8 +128,20 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 		auto &actual = td_types[i];
 
 		if (actual != expected) {
-			if (expected.GetId() == TeradataTypeId::TIMESTAMP && actual.GetId() == TeradataTypeId::CHAR &&
-			    actual.GetLength() == 19) {
+			if (expected.GetId() == TeradataTypeId::TIMESTAMP && actual.GetId() == TeradataTypeId::CHAR) {
+
+				const auto is_ts_s = expected.GetWidth() == 6 && actual.GetLength() == 26;
+				const auto is_ts_ms = expected.GetWidth() == 3 && actual.GetLength() == 23;
+				const auto is_ts_us = expected.GetWidth() == 0 && actual.GetLength() == 19;
+
+				if (is_ts_s || is_ts_ms || is_ts_us) {
+					// Special case, this gets cast later
+					continue;
+				}
+			}
+
+			if (expected.GetId() == TeradataTypeId::TIMESTAMP_TZ && actual.GetId() == TeradataTypeId::CHAR &&
+				actual.GetLength() == 32) {
 				// Special case, this gets cast later
 				continue;
 			}
