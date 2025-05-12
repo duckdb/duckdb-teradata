@@ -23,7 +23,7 @@ string TeradataType::ToString() const {
 	case TeradataTypeId::DATE:
 		return "DATE";
 	case TeradataTypeId::TIME:
-		return "TIME(0)"; // Zero precision is default
+		return "TIME(" + to_string(width) + ")";
 	case TeradataTypeId::TIMESTAMP:
 		return "TIMESTAMP(" + to_string(width) + ")";
 	case TeradataTypeId::TIME_TZ:
@@ -282,11 +282,16 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 	}
 	case LogicalTypeId::DATE:
 		return TeradataTypeId::DATE;
-	case LogicalTypeId::TIME:
-		return TeradataTypeId::TIME;
-	case LogicalTypeId::TIME_TZ:
-		return TeradataTypeId::TIME_TZ;
-
+	case LogicalTypeId::TIME: {
+		TeradataType t_type = TeradataTypeId::TIME;
+		t_type.SetWidth(6); // Duckdb store microsecond precision
+		return t_type;
+	}
+	case LogicalTypeId::TIME_TZ: {
+		TeradataType t_type = TeradataTypeId::TIME_TZ;
+		t_type.SetWidth(6); // Duckdb store microsecond precision
+		return t_type;
+	}
 	// Varchar
 	case LogicalTypeId::VARCHAR: {
 		// Since DuckDB types are variable size, set the length to the maximum

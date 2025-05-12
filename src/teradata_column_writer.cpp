@@ -1,5 +1,6 @@
 #include "teradata_column_writer.hpp"
 
+#include "duckdb/common/types/cast_helpers.hpp"
 #include "duckdb/function/scalar/strftime_format.hpp"
 
 #include <duckdb/common/types/time.hpp>
@@ -315,7 +316,7 @@ private:
 
 class TeradataTimeWriter final : public TypedColumnWriter<dtime_t> {
 public:
-	static constexpr auto CHAR_SIZE = 8;
+	static constexpr auto CHAR_SIZE = 15;
 
 	int32_t Reserve(const_optional_ptr<dtime_t> value) override {
 		return CHAR_SIZE;
@@ -323,14 +324,14 @@ public:
 
 	void Encode(const_optional_ptr<dtime_t> value, char *&result) override {
 		if (value) {
-			const auto &ds = *value;
-			auto str = Time::ToString(ds);
+			const auto &time = *value;
 
-			if (str.size() != CHAR_SIZE) {
-				throw InvalidInputException("Teradata time: '%s' is not in the expected format", str);
-			}
+			int32_t time_units[4];
+			Time::Convert(time, time_units[0], time_units[1], time_units[2], time_units[3]);
 
-			memcpy(result, str.c_str(), str.size());
+			char micro_buffer[6];
+			TimeToStringCast::FormatMicros(time_units[3], micro_buffer);
+			TimeToStringCast::Format(result, CHAR_SIZE, time_units, micro_buffer);
 		}
 		result += CHAR_SIZE;
 	}
