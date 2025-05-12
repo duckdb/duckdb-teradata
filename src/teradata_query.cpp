@@ -141,7 +141,7 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 			}
 
 			if (expected.GetId() == TeradataTypeId::TIMESTAMP_TZ && actual.GetId() == TeradataTypeId::CHAR &&
-				actual.GetLength() == 32) {
+			    actual.GetLength() == 32) {
 				// Special case, this gets cast later
 				continue;
 			}

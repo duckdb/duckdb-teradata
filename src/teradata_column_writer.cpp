@@ -6,7 +6,6 @@
 
 namespace duckdb {
 
-
 //----------------------------------------------------------------------------------------------------------------------
 // Teradata Column Writer
 //----------------------------------------------------------------------------------------------------------------------
@@ -30,17 +29,16 @@ void TeradataColumnWriter::SetPresenceBits(idx_t count, idx_t col_idx, char *rec
 // Helper alias
 //----------------------------------------------------------------------------------------------------------------------
 
-template<class T>
+template <class T>
 using const_optional_ptr = optional_ptr<const T>;
 
 //----------------------------------------------------------------------------------------------------------------------
 // Typed Column Writer Helper Class
 //----------------------------------------------------------------------------------------------------------------------
 
-template<class T>
+template <class T>
 class TypedColumnWriter : public TeradataColumnWriter {
 public:
-
 	void ComputeSizes(idx_t count, int32_t lengths[]) override {
 		auto data_ptr = UnifiedVectorFormat::GetData<T>(format);
 
@@ -72,7 +70,7 @@ public:
 	}
 
 	virtual int32_t Reserve(const_optional_ptr<T> value) = 0;
-	virtual void Encode(const_optional_ptr<T> value, char* &result) = 0;
+	virtual void Encode(const_optional_ptr<T> value, char *&result) = 0;
 };
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -124,7 +122,7 @@ public:
 	}
 };
 
-template<class SOURCE, class TARGET = SOURCE>
+template <class SOURCE, class TARGET = SOURCE>
 class TeradataFixedSizeWriter final : public TypedColumnWriter<SOURCE> {
 public:
 	int32_t Reserve(const_optional_ptr<SOURCE> value) override {
@@ -188,7 +186,8 @@ public:
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
-				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(*value));
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format",
+				                            Timestamp::ToString(*value));
 			}
 
 			time_format.FormatString(date, time, result);
@@ -196,6 +195,7 @@ public:
 
 		result += CHAR_SIZE;
 	}
+
 private:
 	StrfTimeFormat time_format;
 };
@@ -220,7 +220,8 @@ public:
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
-				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(*value));
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format",
+				                            Timestamp::ToString(*value));
 			}
 
 			time_format.FormatString(date, time, result);
@@ -238,7 +239,7 @@ public:
 	static constexpr auto CHAR_SIZE = 23;
 
 	TeradataTimestampMSWriter() {
-	 	StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%g", time_format);
+		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%g", time_format);
 	}
 
 	int32_t Reserve(const_optional_ptr<timestamp_t> value) override {
@@ -258,7 +259,8 @@ public:
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
-				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format",
+				                            Timestamp::ToString(ts));
 			}
 
 			time_format.FormatString(date, time, result);
@@ -297,7 +299,8 @@ public:
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
 			if (len != CHAR_SIZE) {
-				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format",
+				                            Timestamp::ToString(ts));
 			}
 
 			time_format.FormatString(date, time, result);
@@ -310,29 +313,28 @@ private:
 	StrfTimeFormat time_format;
 };
 
- class TeradataTimeWriter final : public TypedColumnWriter<dtime_t> {
- public:
- 	static constexpr auto CHAR_SIZE = 8;
+class TeradataTimeWriter final : public TypedColumnWriter<dtime_t> {
+public:
+	static constexpr auto CHAR_SIZE = 8;
 
- 	int32_t Reserve(const_optional_ptr<dtime_t> value) override {
- 		return CHAR_SIZE;
- 	}
+	int32_t Reserve(const_optional_ptr<dtime_t> value) override {
+		return CHAR_SIZE;
+	}
 
- 	void Encode(const_optional_ptr<dtime_t> value, char *&result) override {
- 		if (value) {
- 			const auto &ds = *value;
- 			auto str = Time::ToString(ds);
+	void Encode(const_optional_ptr<dtime_t> value, char *&result) override {
+		if (value) {
+			const auto &ds = *value;
+			auto str = Time::ToString(ds);
 
- 			if (str.size() != CHAR_SIZE) {
- 				throw InvalidInputException("Teradata time: '%s' is not in the expected format", str);
- 			}
+			if (str.size() != CHAR_SIZE) {
+				throw InvalidInputException("Teradata time: '%s' is not in the expected format", str);
+			}
 
- 			memcpy(result, str.c_str(), str.size());
- 		}
- 		result += CHAR_SIZE;
- 	}
- };
-
+			memcpy(result, str.c_str(), str.size());
+		}
+		result += CHAR_SIZE;
+	}
+};
 
 //----------------------------------------------------------------------------------------------------------------------
 // Constructor
@@ -390,6 +392,5 @@ unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &t
 		throw NotImplementedException("TeradataColumnWriter::Make: type %s not supported", type.ToString());
 	}
 }
-
 
 } // namespace duckdb

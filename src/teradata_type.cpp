@@ -119,15 +119,22 @@ LogicalType TeradataType::ToDuckDB() const {
 		// Round to closest duckdb precision
 		switch (width) {
 		// Seconds
-		case 0: return LogicalType::TIMESTAMP_S;
+		case 0:
+			return LogicalType::TIMESTAMP_S;
 		// Milliseconds
-		case 1: return LogicalType::TIMESTAMP_MS;
-		case 2: return LogicalType::TIMESTAMP_MS;
-		case 3: return LogicalType::TIMESTAMP_MS;
+		case 1:
+			return LogicalType::TIMESTAMP_MS;
+		case 2:
+			return LogicalType::TIMESTAMP_MS;
+		case 3:
+			return LogicalType::TIMESTAMP_MS;
 		// Microseconds
-		case 4: return LogicalType::TIMESTAMP;
-		case 5: return LogicalType::TIMESTAMP;
-		case 6: return LogicalType::TIMESTAMP;
+		case 4:
+			return LogicalType::TIMESTAMP;
+		case 5:
+			return LogicalType::TIMESTAMP;
+		case 6:
+			return LogicalType::TIMESTAMP;
 		default:
 			throw NotImplementedException("Unimplemented Teradata type");
 		}
