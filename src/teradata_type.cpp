@@ -27,7 +27,7 @@ string TeradataType::ToString() const {
 	case TeradataTypeId::TIMESTAMP:
 		return "TIMESTAMP(" + to_string(width) + ")";
 	case TeradataTypeId::TIME_TZ:
-		return "TIME_TZ";
+		return "TIME(" + to_string(width) + ") WITH TIME ZONE";
 	case TeradataTypeId::TIMESTAMP_TZ:
 		return "TIMESTAMP(" + to_string(width) + ") WITH TIME ZONE";
 	case TeradataTypeId::ST_GEOMETRY:
@@ -282,6 +282,7 @@ TeradataType TeradataType::FromDuckDB(const LogicalType &type) {
 	}
 	case LogicalTypeId::DATE:
 		return TeradataTypeId::DATE;
+
 	case LogicalTypeId::TIME: {
 		TeradataType t_type = TeradataTypeId::TIME;
 		t_type.SetWidth(6); // Duckdb store microsecond precision

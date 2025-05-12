@@ -337,6 +337,32 @@ public:
 	}
 };
 
+class TeradataTimeTZWriter final : public TypedColumnWriter<dtime_tz_t> {
+public:
+	static constexpr auto CHAR_SIZE = 21;
+
+	int32_t Reserve(const_optional_ptr<dtime_tz_t> value) override {
+		return CHAR_SIZE;
+	}
+
+	void Encode(const_optional_ptr<dtime_tz_t> value, char *&result) override {
+		if (value) {
+			const auto time = value->time();
+
+			int32_t time_units[4];
+			Time::Convert(time, time_units[0], time_units[1], time_units[2], time_units[3]);
+
+			char micro_buffer[6];
+			TimeToStringCast::FormatMicros(time_units[3], micro_buffer);
+			TimeToStringCast::Format(result, 15, time_units, micro_buffer);
+
+			memcpy(result + 15, "+00:00", 6);
+		}
+
+		result += CHAR_SIZE;
+	}
+};
+
 //----------------------------------------------------------------------------------------------------------------------
 // Constructor
 //----------------------------------------------------------------------------------------------------------------------
@@ -381,6 +407,8 @@ unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &t
 		return make_uniq_base<TeradataColumnWriter, TeradataDateWriter>();
 	case LogicalTypeId::TIME:
 		return make_uniq_base<TeradataColumnWriter, TeradataTimeWriter>();
+	case LogicalTypeId::TIME_TZ:
+		return make_uniq_base<TeradataColumnWriter, TeradataTimeTZWriter>();
 	case LogicalTypeId::TIMESTAMP_SEC:
 		return make_uniq_base<TeradataColumnWriter, TeradataTimestampSecWriter>();
 	case LogicalTypeId::TIMESTAMP_MS:

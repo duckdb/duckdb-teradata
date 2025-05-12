@@ -152,6 +152,12 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 				continue;
 			}
 
+			if (expected.GetId() == TeradataTypeId::TIME_TZ && actual.GetId() == TeradataTypeId::CHAR &&
+			    actual.GetLength() == 21) {
+				// Special case, this gets cast later
+				continue;
+			}
+
 			throw InvalidInputException("Teradata query schema has changed since it was last bound!\n"
 			                            "Column: '%s' expected to be of type '%s' but received '%s'\n"
 			                            "Please re-execute or re-prepare the query",
