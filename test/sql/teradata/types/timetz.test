@@ -12,28 +12,25 @@ require-env TD_DB
 statement ok
 ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
 
-
 # Drop table if it exists
 statement ok
 DROP TABLE IF EXISTS td.test_timestamp;
 
 # Create test table
 statement ok
-CREATE TABLE td.test_timestamp (t TIMESTAMP, ts TIMESTAMP_S, tsm TIMESTAMP_MS);
+CREATE TABLE td.test_timestamp (
+  t TIMETZ
+);
 
 # Insert test data
 statement ok
-INSERT INTO td.test_timestamp VALUES (
-    TIMESTAMP '2000-08-25 10:14:59.123456',
-    TIMESTAMP_S '2000-08-25  10:14:59',
-    TIMESTAMP_MS '2000-08-25  10:14:59.123'
-)
-
+INSERT INTO td.test_timestamp (t) VALUES (TIMETZ '11:37:58.123456+08:00'), (TIMETZ '11:37:58-08:00')
 # Select data from test table
-query III
-SELECT * FROM td.test_timestamp ORDER BY ALL;
+query I
+SELECT t FROM td.test_timestamp ORDER BY ALL;
 ----
-2000-08-25 10:14:59.123456	2000-08-25 10:14:59	2000-08-25 10:14:59.123
+11:37:58+00
+11:37:58.123456+00
 
 # clean up
 statement ok

@@ -6,10 +6,10 @@ namespace duckdb {
 
 class TeradataColumnWriter {
 public:
-	void Init(Vector &vec, idx_t count);
-	void SetPresenceBits(idx_t count, idx_t col_idx, idx_t col_count, char *records[]) const;
-
 	virtual ~TeradataColumnWriter() = default;
+	void Init(Vector &vec, idx_t count);
+	void SetPresenceBits(idx_t count, idx_t col_idx, char *records[]) const;
+
 	virtual void ComputeSizes(idx_t count, int32_t lengths[]) = 0;
 	virtual void EncodeVector(idx_t count, char *records[]) = 0;
 

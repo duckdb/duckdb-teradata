@@ -19,21 +19,21 @@ DROP TABLE IF EXISTS td.test_timestamp;
 
 # Create test table
 statement ok
-CREATE TABLE td.test_timestamp (t TIMESTAMP, ts TIMESTAMP_S, tsm TIMESTAMP_MS);
+CREATE TABLE td.test_timestamp (
+  t TIMESTAMPTZ
+);
 
+#(TIMESTAMPTZ '2000-01-01 11:37:58.123456+08:00'),
 # Insert test data
 statement ok
-INSERT INTO td.test_timestamp VALUES (
-    TIMESTAMP '2000-08-25 10:14:59.123456',
-    TIMESTAMP_S '2000-08-25  10:14:59',
-    TIMESTAMP_MS '2000-08-25  10:14:59.123'
-)
+INSERT INTO td.test_timestamp (t) VALUES
+    (TIMESTAMPTZ '2000-01-01 11:37:58-08:00')
 
 # Select data from test table
-query III
-SELECT * FROM td.test_timestamp ORDER BY ALL;
+query I
+SELECT t FROM td.test_timestamp ORDER BY ALL;
 ----
-2000-08-25 10:14:59.123456	2000-08-25 10:14:59	2000-08-25 10:14:59.123
+2000-01-01 19:37:58+00
 
 # clean up
 statement ok
