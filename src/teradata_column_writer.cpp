@@ -161,40 +161,14 @@ public:
 	}
 };
 
-class TeradataTimestampWriter final : public TeradataColumnWriterBase<TeradataTimestampWriter> {
+class TeradataTimestampTzWriter final : public TeradataColumnWriterBase<TeradataTimestampTzWriter> {
 public:
+	static constexpr auto CHAR_SIZE = 32;
 
-	StrfTimeFormat time_format;
-	idx_t size;
-
-	explicit TeradataTimestampWriter(LogicalTypeId id) {
-		switch (id) {
-		case LogicalTypeId::TIMESTAMP_SEC:
-			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S", time_format);
-			size = 19;
-			break;
-		case LogicalTypeId::TIMESTAMP_MS:
-			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%g", time_format);
-			size = 23;
-			break;
-		case LogicalTypeId::TIMESTAMP:
-			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f", time_format);
-			size = 26;
-			break;
-		case LogicalTypeId::TIMESTAMP_TZ:
-			StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f+00:00", time_format);
-			size = 32;
-			break;
-		default:
-			throw NotImplementedException("Unknown LogicalTypeId");
-		}
+	TeradataTimestampTzWriter() {
+		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f+00:00", time_format);
 	}
 
-	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
-		return size;
-	}
-
-	// TODO: Deal with character encoding/conversion here
 	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
 		const auto row_idx = format.sel->get_index(out_idx);
 		if (format.validity.RowIsValid(row_idx)) {
@@ -206,7 +180,7 @@ public:
 			// Subtract one for the null terminator
 			const auto len = time_format.GetLength(date, time, 0, nullptr);
 
-			if (len != size) {
+			if (len != CHAR_SIZE) {
 				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
 			}
 
@@ -214,8 +188,138 @@ public:
 			time_format.FormatString(date, time, result);
 		}
 
-		result += size;
+		result += CHAR_SIZE;
 	}
+
+	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+		return CHAR_SIZE;
+	}
+
+private:
+	StrfTimeFormat time_format;
+};
+
+class TeradataTimestampUSWriter final : public TeradataColumnWriterBase<TeradataTimestampUSWriter> {
+public:
+	static constexpr auto CHAR_SIZE = 26;
+
+	explicit TeradataTimestampUSWriter() {
+		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%f", time_format);
+	}
+
+	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
+		const auto row_idx = format.sel->get_index(out_idx);
+		if (format.validity.RowIsValid(row_idx)) {
+			const auto &ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+
+			const auto date = Timestamp::GetDate(ts);
+			const auto time = Timestamp::GetTime(ts);
+
+			// Subtract one for the null terminator
+			const auto len = time_format.GetLength(date, time, 0, nullptr);
+
+			if (len != CHAR_SIZE) {
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
+			}
+
+			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
+			time_format.FormatString(date, time, result);
+		}
+
+		result += CHAR_SIZE;
+	}
+
+	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+		return CHAR_SIZE;
+	}
+
+private:
+	StrfTimeFormat time_format;
+};
+
+class TeradataTimestampMSWriter final : public TeradataColumnWriterBase<TeradataTimestampMSWriter> {
+public:
+	static constexpr auto CHAR_SIZE = 23;
+
+	TeradataTimestampMSWriter() {
+		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S.%g", time_format);
+	}
+
+	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+		return CHAR_SIZE;
+	}
+
+	// TODO: Deal with character encoding/conversion here
+	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
+		const auto row_idx = format.sel->get_index(out_idx);
+		if (format.validity.RowIsValid(row_idx)) {
+			auto ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+
+			if (Timestamp::IsFinite(ts)) {
+				ts = Timestamp::FromEpochMs(ts.value);
+			}
+
+			const auto date = Timestamp::GetDate(ts);
+			const auto time = Timestamp::GetTime(ts);
+
+			// Subtract one for the null terminator
+			const auto len = time_format.GetLength(date, time, 0, nullptr);
+
+			if (len != CHAR_SIZE) {
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
+			}
+
+			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
+			time_format.FormatString(date, time, result);
+		}
+
+		result += CHAR_SIZE;
+	}
+
+private:
+	StrfTimeFormat time_format;
+};
+
+class TeradataTimestampSecWriter final : public TeradataColumnWriterBase<TeradataTimestampSecWriter> {
+public:
+	static constexpr auto CHAR_SIZE = 19;
+
+	TeradataTimestampSecWriter() {
+		StrfTimeFormat::ParseFormatSpecifier("%Y-%m-%d %H:%M:%S", time_format);
+	}
+
+	idx_t GetSize(UnifiedVectorFormat &format, idx_t out_idx) override {
+		return CHAR_SIZE;
+	}
+
+	void Encode(UnifiedVectorFormat &format, idx_t out_idx, char *&result) override {
+		const auto row_idx = format.sel->get_index(out_idx);
+		if (format.validity.RowIsValid(row_idx)) {
+			auto ts = UnifiedVectorFormat::GetData<timestamp_t>(format)[row_idx];
+
+			if (Timestamp::IsFinite(ts)) {
+				ts = Timestamp::FromEpochSeconds(ts.value);
+			}
+
+			const auto date = Timestamp::GetDate(ts);
+			const auto time = Timestamp::GetTime(ts);
+
+			// Subtract one for the null terminator
+			const auto len = time_format.GetLength(date, time, 0, nullptr);
+
+			if (len != CHAR_SIZE) {
+				throw InvalidInputException("Teradata timestamp: '%s' is not in the expected format", Timestamp::ToString(ts));
+			}
+
+			//auto result = make_unsafe_uniq_array_uninitialized<char>(len);
+			time_format.FormatString(date, time, result);
+		}
+
+		result += CHAR_SIZE;
+	}
+
+private:
+	StrfTimeFormat time_format;
 };
 
 class TeradataTimeWriter final : public TeradataColumnWriterBase<TeradataTimeWriter> {
@@ -288,13 +392,13 @@ unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &t
 	case LogicalTypeId::TIME:
 		return make_uniq_base<TeradataColumnWriter, TeradataTimeWriter>();
 	case LogicalTypeId::TIMESTAMP_SEC:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampSecWriter>();
 	case LogicalTypeId::TIMESTAMP_MS:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampMSWriter>();
 	case LogicalTypeId::TIMESTAMP:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampUSWriter>();
 	case LogicalTypeId::TIMESTAMP_TZ:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampWriter>(type.id());
+		return make_uniq_base<TeradataColumnWriter, TeradataTimestampTzWriter>();
 	default:
 		throw NotImplementedException("TeradataColumnWriter::Make: type %s not supported", type.ToString());
 	}
