@@ -68,7 +68,7 @@ void TeradataIndexSet::LoadEntries(ClientContext &context) {
 	const auto query = StringUtil::Format("SELECT T.TableName, I.IndexName, I.IndexType, I.ColumnName, I.UniqueFlag "
 	                                      "FROM DBC.IndicesV AS I JOIN DBC.TablesV AS T "
 	                                      "ON T.TableName = I.TableName AND T.DatabaseName = I.DatabaseName "
-	                                      "WHERE T.DatabaseName = '%s' AND T.TableKind = 'T' "
+	                                      "WHERE T.DatabaseName = '%s' AND (T.TableKind = 'T' OR T.TableKind = 'O') "
 	                                      "ORDER BY T.TableName, I.IndexName, I.IndexType, I.ColumnName, I.UniqueFlag;",
 	                                      schema.name);
 

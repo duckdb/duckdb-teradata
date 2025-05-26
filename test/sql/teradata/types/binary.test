@@ -1,7 +1,7 @@
 require teradata
 
 # Pass teradata logon string as environment variable
-# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"'
 require-env TD_LOGON
 
 # Pass database name to use when creating test tables

@@ -151,16 +151,10 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	const auto query = StringUtil::Format("SELECT T.TableName, C.ColumnName, C.ColumnType, C.ColumnLength "
 	                                      "FROM dbc.TablesV AS T JOIN dbc.ColumnsV AS C "
 	                                      "ON T.TableName = C.TableName AND T.DatabaseName = C.DatabaseName "
-	                                      "WHERE T.DatabaseName = '%s' AND T.TableKind = 'T' "
+	                                      "WHERE T.DatabaseName = '%s' AND (T.TableKind = 'T' OR T.TableKind = 'O') "
 	                                      "ORDER BY T.TableName, C.ColumnId",
 	                                      schema.name);
 
-	/*
-	const auto query = StringUtil::Format("SELECT TableName, ColumnName, ColumnType FROM dbc.ColumnsV "
-	                                      "WHERE DatabaseName = '%s' AND ColumnType IS NOT NULL "
-	                                      "ORDER BY TableName, ColumnId",
-	                                      td_schema.name);
-	*/
 	const auto result = conn.Query(query, false);
 
 	TeradataTableInfo info;

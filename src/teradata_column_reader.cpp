@@ -147,7 +147,6 @@ public:
 
 			const auto dst = FlatVector::GetData<interval_t>(vec);
 			dst[row_idx] = interval;
-
 		}
 	}
 };
@@ -306,7 +305,7 @@ public:
 			sscanf(buffer, "%d %d:%d", &days, &hours, &minutes);
 
 			const auto micros = hours * Interval::MICROS_PER_HOUR + days * Interval::MICROS_PER_DAY +
-					        minutes * Interval::MICROS_PER_MINUTE;
+			                    minutes * Interval::MICROS_PER_MINUTE;
 			const auto interval = Interval::FromMicro(micros);
 
 			const auto dst = FlatVector::GetData<interval_t>(vec);
@@ -320,8 +319,8 @@ class TeradataIntervalDayToSecondReader final : public TeradataColumnReader {
 	idx_t precision = 0;
 	idx_t second_precision = 0;
 
-	explicit TeradataIntervalDayToSecondReader(idx_t precision, idx_t second_precision) : precision(precision),
-		second_precision(second_precision) {
+	explicit TeradataIntervalDayToSecondReader(idx_t precision, idx_t second_precision)
+	    : precision(precision), second_precision(second_precision) {
 		D_ASSERT(precision < 5);
 		D_ASSERT(second_precision < 7);
 		if (second_precision != 0) {
@@ -358,7 +357,8 @@ class TeradataIntervalDayToSecondReader final : public TeradataColumnReader {
 
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
-				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC / static_cast<int64_t>(pow(10, second_precision));
+				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
+				          static_cast<int64_t>(pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
@@ -397,7 +397,6 @@ public:
 		}
 	}
 };
-
 
 class TeradataIntervalHourToMinuteReader final : public TeradataColumnReader {
 public:
@@ -473,7 +472,8 @@ public:
 
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
-				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC / static_cast<int64_t>(pow(10, second_precision));
+				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
+				          static_cast<int64_t>(pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
@@ -552,7 +552,8 @@ public:
 
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
-				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC / static_cast<int64_t>(pow(10, second_precision));
+				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
+				          static_cast<int64_t>(pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
@@ -601,7 +602,8 @@ public:
 
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
-				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC / static_cast<int64_t>(pow(10, second_precision));
+				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
+				          static_cast<int64_t>(pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
@@ -687,7 +689,6 @@ unique_ptr<TeradataColumnReader> TeradataColumnReader::Make(const TeradataType &
 		throw NotImplementedException("Teradata type reader for '%s' not implemented", type.ToString());
 	}
 }
-
 
 struct IntervalYearOp {
 	static void Parse(BinaryReader &reader, interval_t &result) {
