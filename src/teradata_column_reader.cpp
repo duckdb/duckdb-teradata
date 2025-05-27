@@ -3,6 +3,8 @@
 
 #include "util/binary_reader.hpp"
 
+#include <cmath>
+
 namespace duckdb {
 
 class TeradataVarcharReader final : public TeradataColumnReader {
@@ -359,7 +361,7 @@ public:
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
 				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
-				          static_cast<int64_t>(pow(10, second_precision));
+				          static_cast<int64_t>(std::pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
@@ -474,7 +476,7 @@ public:
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
 				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
-				          static_cast<int64_t>(pow(10, second_precision));
+				          static_cast<int64_t>(std::pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
@@ -554,7 +556,7 @@ public:
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
 				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
-				          static_cast<int64_t>(pow(10, second_precision));
+				          static_cast<int64_t>(std::pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
@@ -604,7 +606,7 @@ public:
 			// Also add fractional seconds if present
 			if (second_precision != 0) {
 				micros += UnsafeNumericCast<int64_t>(fractional_seconds) * Interval::MICROS_PER_SEC /
-				          static_cast<int64_t>(pow(10, second_precision));
+				          static_cast<int64_t>(std::pow(10, second_precision));
 			}
 
 			const auto interval = Interval::FromMicro(micros);
