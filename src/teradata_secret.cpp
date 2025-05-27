@@ -7,22 +7,38 @@
 
 namespace duckdb {
 
+const char * const TeradataSecret::TYPE;
+
 static unique_ptr<BaseSecret> CreateTeradataSecretFunction(ClientContext &context, CreateSecretInput &input) {
 	vector<string> prefix_paths;
 	auto result = make_uniq<KeyValueSecret>(prefix_paths, TeradataSecret::TYPE, "config", input.name);
+
+	bool has_host = false;
+	bool has_user = false;
+	bool has_database = false;
+	bool has_password = false;
+
 	for (const auto &named_param : input.options) {
 		auto lower_name = StringUtil::Lower(named_param.first);
 		if (lower_name == "host") {
 			result->secret_map["host"] = named_param.second.ToString();
+			has_host = true;
 		} else if (lower_name == "user") {
 			result->secret_map["user"] = named_param.second.ToString();
+			has_user = true;
 		} else if (lower_name == "database") {
 			result->secret_map["database"] = named_param.second.ToString();
+			has_database = true;
 		} else if (lower_name == "password") {
 			result->secret_map["password"] = named_param.second.ToString();
+			has_password = true;
 		} else {
 			throw InternalException("Unknown named parameter passed to teradata secret: " + lower_name);
 		}
+	}
+
+	if (!has_host || !has_user || !has_database || !has_password) {
+		throw InvalidInputException("Teradata secret must contain 'HOST', 'USER', 'DATABASE', and 'PASSWORD' parameters");
 	}
 
 	// Set redact keys

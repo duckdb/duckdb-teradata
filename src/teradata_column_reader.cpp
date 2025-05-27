@@ -315,6 +315,7 @@ public:
 };
 
 class TeradataIntervalDayToSecondReader final : public TeradataColumnReader {
+public:
 	idx_t char_size = 0;
 	idx_t precision = 0;
 	idx_t second_precision = 0;

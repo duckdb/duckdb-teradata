@@ -4,6 +4,8 @@
 #include "teradata_query.hpp"
 #include "teradata_execute.hpp"
 #include "teradata_storage.hpp"
+#include "teradata_secret.hpp"
+#include "teradata_clear_cache.hpp"
 
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
@@ -11,10 +13,8 @@
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/extension_util.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
-
-#include <teradata_clear_cache.hpp>
-#include <duckdb/main/connection_manager.hpp>
-#include <duckdb/planner/extension_callback.hpp>
+#include "duckdb/main/connection_manager.hpp"
+#include "duckdb/planner/extension_callback.hpp"
 
 namespace duckdb {
 
@@ -65,6 +65,7 @@ void TeradataExtension::Load(DuckDB &db) {
 	TeradataQueryFunction::Register(instance);
 	TeradataExecuteFunction::Register(instance);
 	TeradataClearCacheFunction::Register(instance);
+	TeradataSecret::Register(instance);
 
 	// Register storage
 	instance.config.storage_extensions["teradata"] = make_uniq<TeradataStorageExtension>();
