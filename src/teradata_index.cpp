@@ -59,8 +59,8 @@ public:
 	unique_ptr<CreateIndexInfo> info;
 	TableCatalogEntry &table;
 
-	unique_ptr<PhysicalOperator> CreatePlan(ClientContext &context, PhysicalPlanGenerator &generator) override {
-		return make_uniq<PhysicalTeradataCreateIndex>(std::move(info), table);
+	PhysicalOperator &CreatePlan(ClientContext &context, PhysicalPlanGenerator &planner) override {
+		return planner.Make<PhysicalTeradataCreateIndex>(std::move(info), table);
 	}
 
 	void Serialize(Serializer &serializer) const override {

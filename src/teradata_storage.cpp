@@ -69,7 +69,8 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 		auto end = beg + info.path.size();
 		auto ptr = beg;
 
-		// Parse the logon string format: "host/user[,password]"
+		// Parse the logon string format: "host/user[,password][,account]"
+		// although, 'account' is unused by us for now.
 		while (ptr != end && *ptr != '/') {
 			host_str += *ptr;
 			ptr++;
@@ -83,7 +84,7 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 			}
 			if (ptr != end && *ptr == ',') {
 				ptr++; // Skip the ','
-				while (ptr != end) {
+				while (ptr != end && *ptr != ',') {
 					pass_str += *ptr;
 					ptr++;
 				}
