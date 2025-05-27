@@ -37,6 +37,8 @@ public:
 	~TeradataRequestContext();
 
 private:
+	static constexpr auto BUFFER_DEFAULT_SIZE = 4096;
+
 	void BeginRequest(const string &sql, char mode);
 	void EndRequest();
 	void Close();
