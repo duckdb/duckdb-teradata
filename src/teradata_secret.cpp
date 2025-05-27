@@ -7,7 +7,7 @@
 
 namespace duckdb {
 
-const char * const TeradataSecret::TYPE;
+const char *const TeradataSecret::TYPE;
 
 static unique_ptr<BaseSecret> CreateTeradataSecretFunction(ClientContext &context, CreateSecretInput &input) {
 	vector<string> prefix_paths;
@@ -38,7 +38,8 @@ static unique_ptr<BaseSecret> CreateTeradataSecretFunction(ClientContext &contex
 	}
 
 	if (!has_host || !has_user || !has_database || !has_password) {
-		throw InvalidInputException("Teradata secret must contain 'HOST', 'USER', 'DATABASE', and 'PASSWORD' parameters");
+		throw InvalidInputException(
+		    "Teradata secret must contain 'HOST', 'USER', 'DATABASE', and 'PASSWORD' parameters");
 	}
 
 	// Set redact keys

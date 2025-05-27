@@ -46,8 +46,9 @@ void TeradataCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
 	schemas.Scan(context, [&](CatalogEntry &schema) { callback(schema.Cast<TeradataSchemaEntry>()); });
 }
 
-optional_ptr<SchemaCatalogEntry> TeradataCatalog::LookupSchema(CatalogTransaction transaction, const EntryLookupInfo &schema_lookup,
-												  OnEntryNotFound if_not_found) {
+optional_ptr<SchemaCatalogEntry> TeradataCatalog::LookupSchema(CatalogTransaction transaction,
+                                                               const EntryLookupInfo &schema_lookup,
+                                                               OnEntryNotFound if_not_found) {
 	auto schema_name = schema_lookup.GetEntryName();
 	if (schema_name == DEFAULT_SCHEMA) {
 		schema_name = default_schema;

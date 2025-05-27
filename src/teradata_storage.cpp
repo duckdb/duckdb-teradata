@@ -103,10 +103,12 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 	}
 
 	if (user.empty()) {
-		throw InvalidInputException("Teradata ATTACH must contain a 'user', either in the logon string, passed as options or in defined in a secret");
+		throw InvalidInputException("Teradata ATTACH must contain a 'user', either in the logon string, passed as "
+		                            "options or in defined in a secret");
 	}
 	if (host.empty()) {
-		throw InvalidInputException("Teradata ATTACH must contain a 'host', either in the logon string, passed as options or in defined in a secret");
+		throw InvalidInputException("Teradata ATTACH must contain a 'host', either in the logon string, passed as "
+		                            "options or in defined in a secret");
 	}
 	if (database.empty()) {
 		database = user; // Default to user database if not specified

@@ -226,8 +226,8 @@ static void MaterializeTeradataScans(PhysicalOperator &op) {
 	}
 }
 
-PhysicalOperator& TeradataCatalog::PlanInsert(ClientContext &context, PhysicalPlanGenerator &planner, LogicalInsert &op,
-								 optional_ptr<PhysicalOperator> plan) {
+PhysicalOperator &TeradataCatalog::PlanInsert(ClientContext &context, PhysicalPlanGenerator &planner, LogicalInsert &op,
+                                              optional_ptr<PhysicalOperator> plan) {
 
 	if (op.return_chunk) {
 		throw BinderException("RETURNING clause not yet supported for insertion into Teradata tables");
@@ -249,8 +249,8 @@ PhysicalOperator& TeradataCatalog::PlanInsert(ClientContext &context, PhysicalPl
 	return insert;
 }
 
-PhysicalOperator & TeradataCatalog::PlanCreateTableAs(ClientContext &context, PhysicalPlanGenerator &planner,
-	LogicalCreateTable &op, PhysicalOperator &plan) {
+PhysicalOperator &TeradataCatalog::PlanCreateTableAs(ClientContext &context, PhysicalPlanGenerator &planner,
+                                                     LogicalCreateTable &op, PhysicalOperator &plan) {
 
 	// TODO: This is where we would cast to TD types if needed
 	// plan = AddCastToTeradataTypes(context, std::move(plan));

@@ -81,7 +81,8 @@ optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateType(CatalogTransaction tr
 	throw NotImplementedException("TeradataSchemaEntry::CreateType");
 }
 
-optional_ptr<CatalogEntry> TeradataSchemaEntry::LookupEntry(CatalogTransaction transaction, const EntryLookupInfo &lookup_info) {
+optional_ptr<CatalogEntry> TeradataSchemaEntry::LookupEntry(CatalogTransaction transaction,
+                                                            const EntryLookupInfo &lookup_info) {
 	switch (lookup_info.GetCatalogType()) {
 	case CatalogType::TABLE_ENTRY:
 		return tables.GetEntry(transaction.GetContext(), lookup_info.GetEntryName());
