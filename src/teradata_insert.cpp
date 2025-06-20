@@ -222,12 +222,12 @@ static void MaterializeTeradataScans(PhysicalOperator &op) {
 	}
 
 	for (auto &child : op.children) {
-		MaterializeTeradataScans(*child);
+		MaterializeTeradataScans(child);
 	}
 }
 
-unique_ptr<PhysicalOperator> TeradataCatalog::PlanInsert(ClientContext &context, LogicalInsert &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
+PhysicalOperator &TeradataCatalog::PlanInsert(ClientContext &context, PhysicalPlanGenerator &planner, LogicalInsert &op,
+                                              optional_ptr<PhysicalOperator> plan) {
 
 	if (op.return_chunk) {
 		throw BinderException("RETURNING clause not yet supported for insertion into Teradata tables");
@@ -236,27 +236,30 @@ unique_ptr<PhysicalOperator> TeradataCatalog::PlanInsert(ClientContext &context,
 		throw BinderException("ON CONFLICT clause not yet supported for insertion into Teradata tables");
 	}
 
+	D_ASSERT(plan);
+
 	MaterializeTeradataScans(*plan);
 
 	// TODO: This is where we would cast to TD types if needed
 	// plan = AddCastToTeradataTypes(context, std::move(plan));
 
-	auto insert = make_uniq<TeradataInsert>(op, op.table, op.column_index_map);
-	insert->children.push_back(std::move(plan));
-	return std::move(insert);
+	auto &insert = planner.Make<TeradataInsert>(op, op.table, op.column_index_map);
+	insert.children.push_back(*plan);
+
+	return insert;
 }
 
-unique_ptr<PhysicalOperator> TeradataCatalog::PlanCreateTableAs(ClientContext &context, LogicalCreateTable &op,
-                                                                unique_ptr<PhysicalOperator> plan) {
+PhysicalOperator &TeradataCatalog::PlanCreateTableAs(ClientContext &context, PhysicalPlanGenerator &planner,
+                                                     LogicalCreateTable &op, PhysicalOperator &plan) {
 
 	// TODO: This is where we would cast to TD types if needed
 	// plan = AddCastToTeradataTypes(context, std::move(plan));
 
-	MaterializeTeradataScans(*plan);
+	MaterializeTeradataScans(plan);
 
-	auto insert = make_uniq<TeradataInsert>(op, op.schema, std::move(op.info));
-	insert->children.push_back(std::move(plan));
-	return std::move(insert);
+	auto &insert = planner.Make<TeradataInsert>(op, op.schema, std::move(op.info));
+	insert.children.push_back(plan);
+	return insert;
 }
 
 } // namespace duckdb

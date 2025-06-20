@@ -14,6 +14,8 @@ TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con) {
 void TeradataRequestContext::Init(const TeradataConnection &con) {
 	// Initialize
 	dbc.total_len = sizeof(DBCAREA);
+	dbc.resp_buf_len = BUFFER_DEFAULT_SIZE;
+	dbc.two_resp_bufs = 'Y';
 
 	int32_t result = EM_OK;
 	DBCHINI(&result, cnta, &dbc);
@@ -21,7 +23,7 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 		throw IOException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 	dbc.i_sess_id = con.GetSessionId();
-	buffer.resize(1024);
+	buffer.resize(BUFFER_DEFAULT_SIZE);
 }
 
 void TeradataRequestContext::Execute(const string &sql) {
@@ -571,6 +573,8 @@ void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	dbc.change_opts = 'Y'; // change options to indicate that we want to change the options (to indicator mode)
 	dbc.resp_mode = 'I';   // indicator record mode
 	dbc.req_proc_opt = mode;
+	dbc.two_resp_bufs = 'Y'; // Enable double buffering for response buffers (to increase throughput?)
+	dbc.resp_buf_len = BUFFER_DEFAULT_SIZE;
 
 	// prepare mode (with params)	= 'S'
 	// prepare mode (no params)		= 'P'

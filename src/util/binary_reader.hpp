@@ -33,6 +33,13 @@ public:
 		return result;
 	}
 
+	void ReadInto(char *dst, size_t size) {
+		CheckSize(size);
+
+		memcpy(dst, ptr, size);
+		ptr += size;
+	}
+
 	void Skip(size_t size) {
 		CheckSize(size);
 		ptr += size;

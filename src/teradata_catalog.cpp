@@ -46,11 +46,12 @@ void TeradataCatalog::ScanSchemas(ClientContext &context, std::function<void(Sch
 	schemas.Scan(context, [&](CatalogEntry &schema) { callback(schema.Cast<TeradataSchemaEntry>()); });
 }
 
-optional_ptr<SchemaCatalogEntry> TeradataCatalog::GetSchema(CatalogTransaction transaction, const string &schema_name,
-                                                            OnEntryNotFound if_not_found,
-                                                            QueryErrorContext error_context) {
+optional_ptr<SchemaCatalogEntry> TeradataCatalog::LookupSchema(CatalogTransaction transaction,
+                                                               const EntryLookupInfo &schema_lookup,
+                                                               OnEntryNotFound if_not_found) {
+	auto schema_name = schema_lookup.GetEntryName();
 	if (schema_name == DEFAULT_SCHEMA) {
-		return GetSchema(transaction, default_schema, if_not_found, error_context);
+		schema_name = default_schema;
 	}
 
 	auto entry = schemas.GetEntry(transaction.GetContext(), schema_name);
@@ -72,15 +73,13 @@ void TeradataCatalog::ClearCache() {
 // Table Management
 //----------------------------------------------------------------------------------------------------------------------
 
-unique_ptr<PhysicalOperator> TeradataCatalog::PlanDelete(ClientContext &context, LogicalDelete &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
-
+PhysicalOperator &TeradataCatalog::PlanDelete(ClientContext &context, PhysicalPlanGenerator &planner, LogicalDelete &op,
+                                              PhysicalOperator &plan) {
 	throw NotImplementedException("TeradataCatalog::PlanDelete");
 }
 
-unique_ptr<PhysicalOperator> TeradataCatalog::PlanUpdate(ClientContext &context, LogicalUpdate &op,
-                                                         unique_ptr<PhysicalOperator> plan) {
-
+PhysicalOperator &TeradataCatalog::PlanUpdate(ClientContext &context, PhysicalPlanGenerator &planner, LogicalUpdate &op,
+                                              PhysicalOperator &plan) {
 	throw NotImplementedException("TeradataCatalog::PlanUpdate");
 }
 
