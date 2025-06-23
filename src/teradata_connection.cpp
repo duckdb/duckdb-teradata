@@ -8,21 +8,9 @@ void TeradataConnection::Reconnect() {
 
 	Int32 result = EM_OK;
 
-	dbc.change_opts = 'Y';
-	dbc.resp_mode = 'R'; // 'Record' mode
-	dbc.keep_resp = 'N'; // Only allow one sequential pass through the response buffer, then discard it
-	dbc.use_presence_bits = 'N';
-	dbc.wait_across_crash = 'N';
-	dbc.tell_about_crash = 'Y';
-	dbc.loc_mode = 'Y';    // 'Local' mode (?);
-	dbc.var_len_req = 'Y'; // Required to pass parameter descriptor length, p.120
-	dbc.var_len_fetch = 'N';
-	dbc.save_resp_buf = 'N';
-	dbc.two_resp_bufs = 'N';
-	dbc.ret_time = 'N';
-	dbc.parcel_mode = 'Y';   // 'Parcel' mode (?);
-	dbc.wait_for_resp = 'Y'; // suspend the application until the response is received
-	dbc.req_proc_opt = 'E';  // 'Execute' mode, dont prepare.
+	const auto dbc_ptr = make_uniq<DBCAREA>();
+	auto dbc = *dbc_ptr;         // Copy the DBCAREA to the member variable
+	char cnta[4] = {0, 0, 0, 0}; // Initialize the control area to zero
 
 	// Set the total length
 	dbc.total_len = sizeof(DBCAREA);
@@ -32,6 +20,8 @@ void TeradataConnection::Reconnect() {
 		// Failed to initialize the DBCAREA we cannot connect
 		throw InternalException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
 	}
+
+	dbc.change_opts = 'Y';
 
 	vector<char> logon_buf(logon_string.begin(), logon_string.end());
 	dbc.func = DBFCON;
@@ -68,6 +58,10 @@ void TeradataConnection::Disconnect() {
 	if (!is_connected) {
 		return;
 	}
+
+	auto dbc_ptr = make_uniq<DBCAREA>();
+	auto dbc = *dbc_ptr;         // Copy the DBCAREA to the member variable
+	char cnta[4] = {0, 0, 0, 0}; // Initialize the control area to zero
 
 	Int32 result = EM_OK;
 

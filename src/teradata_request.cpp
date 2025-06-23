@@ -13,17 +13,45 @@ TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con) {
 
 void TeradataRequestContext::Init(const TeradataConnection &con) {
 	// Initialize
-	dbc.total_len = sizeof(DBCAREA);
-	dbc.resp_buf_len = BUFFER_DEFAULT_SIZE;
-	dbc.two_resp_bufs = 'Y';
-
 	int32_t result = EM_OK;
+
+	// Set the total length
+	dbc.total_len = sizeof(DBCAREA);
+
 	DBCHINI(&result, cnta, &dbc);
 	if (result != EM_OK) {
 		throw IOException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
 	}
-	dbc.i_sess_id = con.GetSessionId();
+
+	// Resize the buffer to the default size
 	buffer.resize(BUFFER_DEFAULT_SIZE);
+
+	// Set the session ID, and change options
+	dbc.change_opts = 'Y';
+
+	dbc.i_sess_id = con.GetSessionId();
+	dbc.resp_buf_len = BUFFER_DEFAULT_SIZE;
+	dbc.resp_mode = 'I';     // 'Record' mode
+	dbc.keep_resp = 'N';     // Only allow one sequential pass through the response buffer, then discard it
+	dbc.save_resp_buf = 'N'; // Do not save the response buffer
+	dbc.two_resp_bufs = 'Y'; // Use two response buffers
+
+	dbc.use_presence_bits = 'Y';
+
+	dbc.wait_for_resp = 'Y';
+	dbc.wait_across_crash = 'N';
+	dbc.tell_about_crash = 'Y';
+
+	dbc.ret_time = 'N'; // Do not return the time
+	dbc.date_form = 'T';
+
+	dbc.var_len_req = 'N';   // Required to pass parameter descriptor length, p.120
+	dbc.var_len_fetch = 'N'; // Do not use variable length fetch
+
+	// TODO: Check that this capability exists
+	dbc.max_decimal_returned = 38;
+
+	// dbc.loc_mode = 'Y';    // 'Local' mode (?);
 }
 
 void TeradataRequestContext::Execute(const string &sql) {
@@ -93,10 +121,7 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	dbc.using_data_len_array = length_array;
 	dbc.using_data_count = row_count;
 
-	dbc.use_presence_bits = 'Y';
-	dbc.var_len_req = 'N';
 	dbc.change_opts = 'Y';
-
 	BeginRequest(sql, 'E');
 
 	MatchParcel(PclENDSTATEMENT);
@@ -585,10 +610,7 @@ void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	// Setup the request
 	dbc.func = DBFIRQ;     // initiate request
 	dbc.change_opts = 'Y'; // change options to indicate that we want to change the options (to indicator mode)
-	dbc.resp_mode = 'I';   // indicator record mode
 	dbc.req_proc_opt = mode;
-	dbc.two_resp_bufs = 'Y'; // Enable double buffering for response buffers (to increase throughput?)
-	dbc.resp_buf_len = BUFFER_DEFAULT_SIZE;
 
 	// prepare mode (with params)	= 'S'
 	// prepare mode (no params)		= 'P'
@@ -597,12 +619,6 @@ void TeradataRequestContext::BeginRequest(const string &sql, char mode) {
 	// Pass the SQL
 	dbc.req_ptr = const_cast<char *>(sql.c_str());
 	dbc.req_len = static_cast<int32_t>(sql.size());
-
-	// Set max decimal return width
-	dbc.max_decimal_returned = 38;
-
-	// Set the return date format
-	dbc.date_form = 'T';
 
 	// Initialize request
 	int32_t result = EM_OK;
