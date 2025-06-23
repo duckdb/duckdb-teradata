@@ -21,7 +21,10 @@ DROP TABLE IF EXISTS td.filter_pushdown_blob;
 
 # Create a test table
 statement ok
-CREATE TABLE td.filter_pushdown_test AS SELECT i FROM range(5) r(i);
+CREATE TABLE td.filter_pushdown_test (i INT);
+
+statement ok
+INSERT INTO td.filter_pushdown_test SELECT i FROM range(5) r(i);
 
 # Greater than
 query I

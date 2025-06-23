@@ -15,8 +15,6 @@ namespace duckdb {
 class TeradataCatalog;
 class TeradataConnection;
 
-enum class TeradataTransactionState { TRANSACTION_NOT_YET_STARTED, TRANSACTION_STARTED, TRANSACTION_FINISHED };
-
 class TeradataTransaction final : public Transaction {
 public:
 	TeradataTransaction(TeradataCatalog &catalog, TransactionManager &manager, ClientContext &context);
@@ -26,36 +24,15 @@ public:
 		return con;
 	}
 
-	// TODO:
-	/*
-	    void Start();
-	    void Commit();
-	    void Rollback();
-
-	    PostgresConnection &GetConnection();
-	    string GetDSN();
-	    unique_ptr<PostgresResult> Query(const string &query);
-	    vector<unique_ptr<PostgresResult>> ExecuteQueries(const string &queries);
-
-
-	    string GetTemporarySchema();
-	 */
+	void Start();
+	void Commit();
+	void Rollback();
 
 	static TeradataTransaction &Get(ClientContext &context, Catalog &catalog);
 
 private:
-	TeradataTransactionState transaction_state;
-
 	// TODO: This shouldnt be passed like this
 	TeradataConnection &con;
-
-	/*
-	    PostgresPoolConnection connection;
-	    AccessMode access_mode;
-	    string temporary_schema;
-	 */
-
-private:
 };
 
 } // namespace duckdb

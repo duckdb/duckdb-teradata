@@ -1,6 +1,7 @@
 #pragma once
 
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/catalog/default/default_table_functions.hpp"
 
 #include "teradata_table_set.hpp"
 #include "teradata_index_set.hpp"
@@ -36,6 +37,13 @@ public:
 private:
 	TeradataTableSet tables;
 	TeradataIndexSet indexes;
+
+	// Builtin default functions
+	mutex default_function_lock;
+	case_insensitive_map_t<unique_ptr<CatalogEntry>> default_function_map;
+
+	optional_ptr<CatalogEntry> TryLoadBuiltInFunction(const string &entry_name);
+	optional_ptr<CatalogEntry> LoadBuiltInFunction(DefaultTableMacro macro);
 };
 
 } // namespace duckdb

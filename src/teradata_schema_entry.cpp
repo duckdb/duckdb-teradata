@@ -1,6 +1,8 @@
 #include "teradata_schema_entry.hpp"
 #include "teradata_table_entry.hpp"
 
+#include "duckdb/catalog/default/default_table_functions.hpp"
+#include "duckdb/catalog/catalog_entry/table_macro_catalog_entry.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
 #include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 
@@ -86,6 +88,8 @@ optional_ptr<CatalogEntry> TeradataSchemaEntry::LookupEntry(CatalogTransaction t
 	switch (lookup_info.GetCatalogType()) {
 	case CatalogType::TABLE_ENTRY:
 		return tables.GetEntry(transaction.GetContext(), lookup_info.GetEntryName());
+	case CatalogType::TABLE_FUNCTION_ENTRY:
+		return TryLoadBuiltInFunction(lookup_info.GetEntryName());
 	default:
 		return nullptr;
 	}
@@ -104,6 +108,45 @@ void TeradataSchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
 
 void TeradataSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) {
 	throw NotImplementedException("TeradataSchemaEntry::Alter");
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Built-in Functions
+//----------------------------------------------------------------------------------------------------------------------
+
+// clang-format off
+static const DefaultTableMacro td_table_macros[] = {
+	{DEFAULT_SCHEMA, "query", {"sql", nullptr}, {{nullptr, nullptr}}, "FROM teradata_query({CATALOG}, sql)"},
+	{nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}
+};
+// clang-format on
+
+optional_ptr<CatalogEntry> TeradataSchemaEntry::LoadBuiltInFunction(DefaultTableMacro macro) {
+	string macro_def = macro.macro;
+	macro_def = StringUtil::Replace(macro_def, "{CATALOG}", KeywordHelper::WriteQuoted(catalog.GetName(), '\''));
+	macro_def = StringUtil::Replace(macro_def, "{SCHEMA}", KeywordHelper::WriteQuoted(name, '\''));
+	macro.macro = macro_def.c_str();
+
+	auto info = DefaultTableFunctionGenerator::CreateTableMacroInfo(macro);
+	auto table_macro =
+	    make_uniq_base<CatalogEntry, TableMacroCatalogEntry>(catalog, *this, info->Cast<CreateMacroInfo>());
+	auto result = table_macro.get();
+	default_function_map.emplace(macro.name, std::move(table_macro));
+	return result;
+}
+
+optional_ptr<CatalogEntry> TeradataSchemaEntry::TryLoadBuiltInFunction(const string &entry_name) {
+	lock_guard<mutex> guard(default_function_lock);
+	auto entry = default_function_map.find(entry_name);
+	if (entry != default_function_map.end()) {
+		return entry->second.get();
+	}
+	for (idx_t index = 0; td_table_macros[index].name != nullptr; index++) {
+		if (StringUtil::CIEquals(td_table_macros[index].name, entry_name)) {
+			return LoadBuiltInFunction(td_table_macros[index]);
+		}
+	}
+	return nullptr;
 }
 
 } // namespace duckdb

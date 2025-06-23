@@ -12,12 +12,14 @@ require-env TD_DB
 statement ok
 attach '${TD_LOGON}' as td (TYPE TERADATA, DATABASE '${TD_DB}');
 
-# Drop table if already exists
-statement ok
-DROP TABLE IF EXISTS td.test_table;
-
-# Create a test table
-statement error
-CREATE TABLE td.test_table AS SELECT i FROM range(5) r(i);
+# Select with the teradata_query function
+query I
+select * from teradata_query('td', 'select 1 + 2');
 ----
-Binder Error: CREATE TABLE AS is not supported for Teradata tables. Please create the table first and then insert into it.
+3
+
+# Use the table macro created in the schema
+query I
+select * from td.query('select 1 + 2');
+----
+3

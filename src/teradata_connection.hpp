@@ -54,8 +54,6 @@ private:
 	string logon_string;
 	Int32 session_id = 0;
 	bool is_connected = false;
-	DBCAREA dbc;
-	char cnta[4];
 };
 
 } // namespace duckdb
