@@ -420,7 +420,21 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 
 void TeradataRequestContext::MatchParcel(uint16_t flavor) {
 	const auto result = FetchParcel();
+
 	if (result != flavor) {
+		if (result == PclERROR) {
+			// Parse the error message
+			BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
+			const auto stmt_no = reader.Read<uint16_t>();
+			const auto info = reader.Read<uint16_t>();
+			const auto code = reader.Read<uint16_t>();
+			const auto msg_len = reader.Read<uint16_t>();
+			const auto msg = reader.ReadBytes(msg_len);
+			const auto msg_str = string(msg, msg_len);
+			throw IOException("Expected parcel flavor %d, got error: stmt_no: %d, info: %d, code: %d, msg: '%s'",
+			                  flavor, stmt_no, info, code, msg_str);
+		}
+
 		throw IOException("Expected parcel flavor %d, got %d", flavor, result);
 	}
 }

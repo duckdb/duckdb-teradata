@@ -7,7 +7,7 @@ TeradataTransaction::TeradataTransaction(TeradataCatalog &catalog, TransactionMa
     : Transaction(manager, context), con(catalog.GetConnection()) {
 
 	// TODO:
-	transaction_state = TeradataTransactionState::TRANSACTION_NOT_YET_STARTED;
+	// transaction_state = TeradataTransactionState::TRANSACTION_NOT_YET_STARTED;
 }
 
 TeradataTransaction::~TeradataTransaction() {
@@ -15,6 +15,18 @@ TeradataTransaction::~TeradataTransaction() {
 
 TeradataTransaction &TeradataTransaction::Get(ClientContext &context, Catalog &catalog) {
 	return Transaction::Get(context, catalog).Cast<TeradataTransaction>();
+}
+
+void TeradataTransaction::Start() {
+	con.Execute("BEGIN TRANSACTION;");
+}
+
+void TeradataTransaction::Commit() {
+	con.Execute("END TRANSACTION;");
+}
+
+void TeradataTransaction::Rollback() {
+	con.Execute("ABORT;");
 }
 
 } // namespace duckdb

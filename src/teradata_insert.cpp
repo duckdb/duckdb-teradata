@@ -118,22 +118,19 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 }
 
 unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &context) const {
-	TeradataTableEntry *insert_table;
 
 	// If no table supplied, this is a CTAS
 	if (!table) {
-		// Create a new table!
-		auto &schema_ref = *schema.get_mutable();
-		const auto transaction = schema_ref.GetCatalogTransaction(context);
-		insert_table = &schema_ref.CreateTable(transaction, *info)->Cast<TeradataTableEntry>();
-	} else {
-		insert_table = &table.get_mutable()->Cast<TeradataTableEntry>();
+		// CTAS is not supported. Teradata doesnt support mixing DML and DDL in transactions
+		throw BinderException("CREATE TABLE AS is not supported for Teradata tables. Please create the table first and "
+		                      "then insert into it.");
 	}
 
 	// Prepare just to see that we type check
 	// TODO: We should type check the statement somehow...
 	// auto &transaction = TeradataTransaction::Get(context, insert_table->catalog);
 	// auto &conn = transaction.GetConnection();
+	const auto insert_table = &table.get_mutable()->Cast<TeradataTableEntry>();
 
 	auto result = make_uniq<TeradataInsertGlobalState>(context);
 	result->table = insert_table;
