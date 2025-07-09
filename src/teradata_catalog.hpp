@@ -7,7 +7,7 @@ namespace duckdb {
 
 class TeradataCatalog final : public Catalog {
 public:
-	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &databse_to_load);
+	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &databse_to_load, idx_t buffer_size);
 	~TeradataCatalog() override;
 
 public:
@@ -53,6 +53,9 @@ private:
 	// The set of schemas in this database
 	TeradataSchemaSet schemas;
 	string default_schema;
+
+	// Teradata response buffer size
+	idx_t buffer_size;
 };
 
 } // namespace duckdb

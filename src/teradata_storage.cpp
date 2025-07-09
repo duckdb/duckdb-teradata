@@ -58,6 +58,19 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 		password = password_opt->second.get().ToString();
 	}
 
+	idx_t buffer_size = 1024 * 1024; // Default buffer size is 1MB
+	auto buffer_size_opt = options.find("buffer_size");
+	if (buffer_size_opt != options.end()) {
+		auto &buffer_size_val = buffer_size_opt->second.get();
+		if (buffer_size_val.type().id() != LogicalTypeId::INTEGER) {
+		}
+		auto buffer_size_int = buffer_size_val.GetValue<int32_t>();
+		if (buffer_size_int <= 0) {
+			throw InvalidInputException("Teradata ATTACH option 'buffer_size' must be a positive integer");
+		}
+		buffer_size = UnsafeNumericCast<idx_t>(buffer_size_int);
+	}
+
 	// Lastly, parse parameters from the logon string
 	if (!info.path.empty()) {
 
@@ -121,7 +134,7 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 	}
 
 	// Create the catalog and connect to the teradata system
-	auto result = make_uniq<TeradataCatalog>(db, connection_string, database);
+	auto result = make_uniq<TeradataCatalog>(db, connection_string, database, buffer_size);
 
 	// Set the database path
 	result->GetConnection().Execute("DATABASE " + KeywordHelper::WriteOptionallyQuoted(database) + ";");
