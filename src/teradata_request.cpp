@@ -51,12 +51,7 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 	dbc.var_len_req = 'N';   // Required to pass parameter descriptor length, p.120
 	dbc.var_len_fetch = 'N'; // Do not use variable length fetch
 
-	// TODO: Check that this capability exists
-	// Work around this, this is global, set it only once on startup.
-	// set this on extension load.
-	dbc.max_decimal_returned = 38;
-
-	// dbc.loc_mode = 'Y';    // 'Local' mode (?);
+	dbc.max_decimal_returned = 38; // DuckDB default decimals are 38 digits
 }
 
 void TeradataRequestContext::Execute(const string &sql) {
