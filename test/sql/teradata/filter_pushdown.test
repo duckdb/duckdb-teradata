@@ -130,6 +130,15 @@ SELECT * FROM td.filter_pushdown_blob WHERE b = '000102030405060708090A0B0C0D0E0
 ----
 1	000102030405060708090A0B0C0D0E0F
 
+query I
+SELECT a FROM td.filter_pushdown_blob WHERE b = '000102030405060708090A0B0C0D0E0F' ORDER BY ALL;
+----
+1
+
+query I
+SELECT b FROM td.filter_pushdown_blob WHERE a = 0 ORDER BY ALL;
+----
+abc
 
 
 # clean up
