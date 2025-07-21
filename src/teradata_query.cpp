@@ -208,7 +208,7 @@ TableFunction TeradataQueryFunction::GetFunction() {
 	function.init_global = TeradataQueryInit;
 	function.function = TeradataQueryExec;
 	function.get_bind_info = TeradataQueryBindInfo;
-	function.projection_pushdown = false;
+	function.projection_pushdown = true;
 	function.filter_pushdown = true;
 
 	return function;

@@ -1,0 +1,42 @@
+require teradata
+
+# Pass teradata logon string as environment variable
+# e.g. 'export TD_LOGON="127.0.0.1/dbc,dbc"`
+require-env TD_LOGON
+
+# Pass database name to use when creating test tables
+# e.g. 'export TD_DB="duckdb_testdb"'
+require-env TD_DB
+
+# Attach teradata database
+statement ok
+attach '${TD_LOGON}' as td (TYPE TERADATA, DATABASE '${TD_DB}');
+
+# Drop table if already exists
+statement ok
+DROP TABLE IF EXISTS td.test_table;
+
+# Dont use primary index, so we can have multiple rows with the same value
+statement ok
+SET teradata_use_primary_index = false;
+
+statement ok
+CREATE TABLE td.test_table (i INTEGER);
+
+statement ok
+INSERT INTO td.test_table VALUES (1), (2), (3);
+
+# Update the rows in the table
+statement ok
+UPDATE td.test_table SET i = i + 1 WHERE i = 2;
+
+# Verify the deletion
+query I
+SELECT * FROM td.test_table ORDER BY i;
+----
+1
+3
+3
+
+statement ok
+DROP TABLE IF EXISTS td.test_table;

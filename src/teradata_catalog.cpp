@@ -70,20 +70,6 @@ void TeradataCatalog::ClearCache() {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// Table Management
-//----------------------------------------------------------------------------------------------------------------------
-
-PhysicalOperator &TeradataCatalog::PlanDelete(ClientContext &context, PhysicalPlanGenerator &planner, LogicalDelete &op,
-                                              PhysicalOperator &plan) {
-	throw NotImplementedException("TeradataCatalog::PlanDelete");
-}
-
-PhysicalOperator &TeradataCatalog::PlanUpdate(ClientContext &context, PhysicalPlanGenerator &planner, LogicalUpdate &op,
-                                              PhysicalOperator &plan) {
-	throw NotImplementedException("TeradataCatalog::PlanUpdate");
-}
-
-//----------------------------------------------------------------------------------------------------------------------
 // Metadata
 //----------------------------------------------------------------------------------------------------------------------
 

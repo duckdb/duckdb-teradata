@@ -17,7 +17,7 @@ static string GetDuckDBToTeradataTypeString(const LogicalType &type) {
 	return TeradataType::FromDuckDB(type).ToString();
 }
 
-static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints) {
+static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints, bool use_primary_index) {
 	std::stringstream ss;
 
 	ss << "(";
@@ -100,10 +100,16 @@ static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<u
 	}
 
 	ss << ")";
+
+	if (!use_primary_index) {
+		// Also dont make a primary index
+		ss << " NO PRIMARY INDEX";
+	}
+
 	return ss.str();
 }
 
-static string GetTeradataCreateTableSQL(const CreateTableInfo &info) {
+static string GetTeradataCreateTableSQL(const CreateTableInfo &info, bool use_primary_index) {
 	std::stringstream ss;
 
 	ss << "CREATE TABLE ";
@@ -115,16 +121,24 @@ static string GetTeradataCreateTableSQL(const CreateTableInfo &info) {
 		ss << ".";
 	}
 	ss << KeywordHelper::WriteQuoted(info.table, '"');
-	ss << GetTeradataColumnsDefSQL(info.columns, info.constraints);
+	ss << GetTeradataColumnsDefSQL(info.columns, info.constraints, use_primary_index);
 	ss << ";";
+
 	return ss.str();
 }
 
 optional_ptr<CatalogEntry> TeradataTableSet::CreateTable(ClientContext &context, BoundCreateTableInfo &info) {
 	auto &transaction = TeradataTransaction::Get(context, catalog);
 
+
+	Value use_primary_index_value;
+	bool use_primary_index = true;
+	if (context.TryGetCurrentSetting("teradata_use_primary_index", use_primary_index_value)) {
+		use_primary_index = use_primary_index_value.GetValue<bool>();
+	}
+
 	auto &base = info.Base();
-	const auto create_sql = GetTeradataCreateTableSQL(base);
+	const auto create_sql = GetTeradataCreateTableSQL(base, use_primary_index);
 
 	// Execute the sql statement
 	transaction.GetConnection().Execute(create_sql);
