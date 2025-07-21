@@ -12,6 +12,9 @@ TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con) {
 }
 
 void TeradataRequestContext::Init(const TeradataConnection &con) {
+	memset(&dbc, 0, sizeof(DBCAREA)); // Clear the DBCAREA structure
+	memset(&cnta, 0, sizeof(cnta)); // Clear the control area
+
 	// Initialize
 	int32_t result = EM_OK;
 
@@ -23,14 +26,14 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 		throw IOException("Failed to initialize DBCAREA: %s", string(dbc.msg_text, dbc.msg_len));
 	}
 
-	// Resize the buffer to the default size
-	buffer.resize(BUFFER_DEFAULT_SIZE);
+	// Resize the parcel buffer to the default size
+	buffer.resize(8 * 1024); // 8KB default parcel size
 
 	// Set the session ID, and change options
 	dbc.change_opts = 'Y';
 
 	dbc.i_sess_id = con.GetSessionId();
-	dbc.resp_buf_len = BUFFER_DEFAULT_SIZE;
+	dbc.resp_buf_len = con.GetBufferSize();
 	dbc.resp_mode = 'I';     // 'Record' mode
 	dbc.keep_resp = 'N';     // Only allow one sequential pass through the response buffer, then discard it
 	dbc.save_resp_buf = 'N'; // Do not save the response buffer
@@ -48,10 +51,7 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 	dbc.var_len_req = 'N';   // Required to pass parameter descriptor length, p.120
 	dbc.var_len_fetch = 'N'; // Do not use variable length fetch
 
-	// TODO: Check that this capability exists
-	dbc.max_decimal_returned = 38;
-
-	// dbc.loc_mode = 'Y';    // 'Local' mode (?);
+	dbc.max_decimal_returned = 38; // DuckDB default decimals are 38 digits
 }
 
 void TeradataRequestContext::Execute(const string &sql) {

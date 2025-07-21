@@ -77,6 +77,11 @@ void TeradataExtension::Load(DuckDB &db) {
 	for (const auto &con : ConnectionManager::Get(instance).GetConnectionList()) {
 		con->registered_state->Insert("teradata_extension", make_shared_ptr<TeradataExtensionState>());
 	}
+
+	instance.config.AddExtensionOption(
+		"teradata_use_primary_index",
+		"Whether or not to use a primary index when creating Teradata tables",
+		LogicalType::BOOLEAN, Value::BOOLEAN(true));
 }
 
 std::string TeradataExtension::Name() {

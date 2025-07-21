@@ -42,6 +42,7 @@ void TeradataConnection::Reconnect() {
 	dbc.fet_max_data_len = sizeof(buf);
 
 	dbc.i_req_id = dbc.o_req_id;
+	dbc.i_sess_id = dbc.o_sess_id;
 
 	// Now call the fetch command
 	DBCHCL(&result, cnta, &dbc);
@@ -49,6 +50,11 @@ void TeradataConnection::Reconnect() {
 		// Failed to fetch
 		throw IOException("Failed to fetch from Teradata: %s", string(dbc.msg_text, dbc.msg_len));
 	}
+
+	// End the connection request properly
+	dbc.func = DBFERQ;
+	DBCHCL(&result, cnta, &dbc);
+	// Don't check error here - some versions may not require DBFERQ after connection
 
 	session_id = dbc.o_sess_id;
 	is_connected = true;

@@ -13,7 +13,7 @@ class TeradataColumnWriter;
 
 class TeradataConnection {
 public:
-	explicit TeradataConnection(const string &logon_string_p) {
+	explicit TeradataConnection(const string &logon_string_p, idx_t buffer_size_p) : buffer_size(buffer_size_p){
 		SetLogonString(logon_string_p);
 		Reconnect();
 	}
@@ -32,6 +32,10 @@ public:
 
 	const string &GetLogonString() const {
 		return logon_string;
+	}
+
+	idx_t GetBufferSize() const {
+		return buffer_size;
 	}
 
 	void Reconnect();
@@ -54,6 +58,9 @@ private:
 	string logon_string;
 	Int32 session_id = 0;
 	bool is_connected = false;
+
+	// Teradata response buffer size
+	idx_t buffer_size;
 };
 
 } // namespace duckdb

@@ -12,9 +12,9 @@ namespace duckdb {
 // Initialization
 //----------------------------------------------------------------------------------------------------------------------
 
-TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &database_to_load)
-    : Catalog(db), schemas(*this, database_to_load), default_schema(database_to_load) {
-	conn = make_uniq<TeradataConnection>(logon_string);
+TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &database_to_load, idx_t buffer_size)
+    : Catalog(db), schemas(*this, database_to_load), default_schema(database_to_load), buffer_size(buffer_size) {
+	conn = make_uniq<TeradataConnection>(logon_string, buffer_size);
 	path = logon_string;
 
 	// No empty default schema
@@ -67,20 +67,6 @@ void TeradataCatalog::DropSchema(ClientContext &context, DropInfo &info) {
 
 void TeradataCatalog::ClearCache() {
 	schemas.ClearEntries();
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-// Table Management
-//----------------------------------------------------------------------------------------------------------------------
-
-PhysicalOperator &TeradataCatalog::PlanDelete(ClientContext &context, PhysicalPlanGenerator &planner, LogicalDelete &op,
-                                              PhysicalOperator &plan) {
-	throw NotImplementedException("TeradataCatalog::PlanDelete");
-}
-
-PhysicalOperator &TeradataCatalog::PlanUpdate(ClientContext &context, PhysicalPlanGenerator &planner, LogicalUpdate &op,
-                                              PhysicalOperator &plan) {
-	throw NotImplementedException("TeradataCatalog::PlanUpdate");
 }
 
 //----------------------------------------------------------------------------------------------------------------------

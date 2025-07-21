@@ -90,6 +90,7 @@ static BindInfo TeradataQueryBindInfo(const optional_ptr<FunctionData> bind_data
 struct TeradataQueryState final : GlobalTableFunctionState {
 	unique_ptr<TeradataQueryResult> td_query;
 	DataChunk scan_chunk;
+	vector<column_t> column_ids;
 };
 
 static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &context, TableFunctionInitInput &input) {
@@ -115,6 +116,7 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 	}
 
 	auto result = make_uniq<TeradataQueryState>();
+	result->column_ids = input.column_ids;
 
 	auto &con = data.GetCatalog()->GetConnection();
 	result->td_query = con.Query(sql, data.is_materialized);
@@ -186,9 +188,16 @@ static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, 
 	// Cast all vectors
 	// For most types, this is a no-op, the target just references the source.
 	// But there are some special cases, like TIMESTAMP that always gets transmitted as VARCHAR.
-	for (idx_t col_idx = 0; col_idx < state.scan_chunk.ColumnCount(); col_idx++) {
-		auto &source = state.scan_chunk.data[col_idx];
-		auto &target = output.data[col_idx];
+	for (idx_t output_idx = 0; output_idx < state.scan_chunk.ColumnCount(); output_idx++) {
+		const auto col_idx = state.column_ids[output_idx];
+
+		if (col_idx == COLUMN_IDENTIFIER_ROW_ID) {
+			throw InvalidInputException(
+			    "Teradata query does not support the row id column (rowid)");
+		}
+
+		auto &source = state.scan_chunk.data[col_idx]; // col ids
+		auto &target = output.data[output_idx];
 
 		VectorOperations::DefaultCast(source, target, count);
 	}
@@ -208,7 +217,7 @@ TableFunction TeradataQueryFunction::GetFunction() {
 	function.init_global = TeradataQueryInit;
 	function.function = TeradataQueryExec;
 	function.get_bind_info = TeradataQueryBindInfo;
-	function.projection_pushdown = false;
+	function.projection_pushdown = true;
 	function.filter_pushdown = true;
 
 	return function;
