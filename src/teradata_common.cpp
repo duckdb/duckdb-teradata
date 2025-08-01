@@ -118,14 +118,14 @@ void TeradataCLIV2::Load(ClientContext &context) {
 
 Int32 DBCHINI(Int32 *a, char *b, struct DBCAREA *c) {
 	if (duckdb::DBCHINI_IMPL) {
-		return duckdb::DBCHINI_IMPL(a, b, c); // Dummy call for the sake of example
+		return duckdb::DBCHINI_IMPL(a, b, c);
 	}
 	throw duckdb::IOException("Teradata CLIV2 not loaded, cannot call DBCHINI!");
 }
 
 Int32 DBCHCL(Int32 *a, char *b, struct DBCAREA *c) {
 	if (duckdb::DBCHCL_IMPL) {
-		return duckdb::DBCHCL_IMPL(a, b, c); // Dummy call for the sake of example
+		return duckdb::DBCHCL_IMPL(a, b, c);
 	}
 	throw duckdb::IOException("Teradata CLIV2 not loaded, cannot call DBCHCL!");
 }

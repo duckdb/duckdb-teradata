@@ -41,20 +41,16 @@ set(EXTENSION_SOURCES
     src/teradata_secret.cpp
     src/teradata_delete_update.cpp)
 
-# Teradata on macos
-if(APPLE)
-  set(TD_INCLUDE_DIR "/Library/Application\ Support/teradata/client/20.00/include")
-endif()
+# Teradata on macos if(APPLE) set(TD_INCLUDE_DIR "/Library/Application\
+# Support/teradata/client/20.00/include") endif()
 
-# on linux (ubuntu has the lib64 suffix)
-if(UNIX AND NOT APPLE)
-  set(TD_INCLUDE_DIR "/opt/teradata/client/20.00/include")
-endif()
+# on linux (ubuntu has the lib64 suffix) if(UNIX AND NOT APPLE)
+# set(TD_INCLUDE_DIR "/opt/teradata/client/20.00/include") endif()
 
-# on windows
-if (WIN32)
-  set(TD_INCLUDE_DIR "C:/Program Files/teradata/client/20.00/include")
-endif ()
+# on windows if (WIN32) set(TD_INCLUDE_DIR "C:/Program
+# Files/teradata/client/20.00/include") endif ()
+
+set(TD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/teradata")
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
@@ -67,9 +63,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
   target_compile_options(${EXTENSION_NAME} PRIVATE -Wno-deprecated-register)
 endif()
 
-target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include ${TD_INCLUDE_DIR})
+target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include
+                                                              ${TD_INCLUDE_DIR})
 target_include_directories(${EXTENSION_NAME} PRIVATE include ${TD_INCLUDE_DIR})
-
 
 install(
   TARGETS ${EXTENSION_NAME}
