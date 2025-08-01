@@ -56,16 +56,6 @@ if (WIN32)
   set(TD_INCLUDE_DIR "C:/Program Files/teradata/client/20.00/include")
 endif ()
 
-
-find_library(
-  TD_CLIV2
-  NAMES libcliv2 libcliv2.so libcliv2.dylib
-  PATHS ${TD_LIBRARY_DIR} REQUIRED)
-find_library(
-  TD_USR
-  NAMES libtdusr libtdusr.so libtdusr.dylib
-  PATHS ${TD_LIBRARY_DIR} REQUIRED)
-
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
