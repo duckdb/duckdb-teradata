@@ -6,8 +6,9 @@ EXT_CONFIG=${PROJ_DIR}extension_config.cmake
 
 .PHONY: configure_ci
 
-configure_ci:
-	python3 install_teradata.py
-
 # Include the Makefile from extension-ci-tools
 include extension-ci-tools/makefiles/duckdb_extension.Makefile
+
+# Custom install script for Teradata tools and utilities
+configure_ci:
+	python3 install_teradata.py

@@ -58,6 +58,8 @@ def install_linux_arm64():
 def main():
     # Get DUCKDB_PLATFORM environment variable
     platform = os.getenv("DUCKDB_PLATFORM")
+    # Check if running in Docker
+    in_docker = os.getenv("LINUX_CI_IN_DOCKER", "0") == "1"
 
     if platform is None:
         print("DUCKDB_PLATFORM environment variable is not set.")
@@ -65,7 +67,7 @@ def main():
 
     print("Installing Teradata Dynamic Libraries for platform:", platform)
 
-    if platform == "linux_amd64":
+    if platform == "linux_amd64" and in_docker:
         install_linux_amd64()
         return
 
