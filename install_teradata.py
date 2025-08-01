@@ -1,5 +1,6 @@
 # Install Teradata Dynamic Libraries
 import os
+import subprocess
 import tarfile
 import urllib.request
 
@@ -45,9 +46,11 @@ def install_linux_amd64():
         print(f"Setup script {setup_script_path} not found. Please ensure the tar.gz file contains it.")
         exit(1)
 
-    code = os.system(f"bash {setup_script_path} a")
-    if code != 0:
-        print("Failed to run the setup script. Please check the script and try again.")
+    # Print the contents of the setup script for debugging
+    try:
+        subprocess.check_output(["bash", setup_script_path, "a"], stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        print(f"Error running setup script: {e.output.decode()}")
         exit(1)
 
     print("Teradata Dynamic Libraries installed successfully for linux_amd64.")
