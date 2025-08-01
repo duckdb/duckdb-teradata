@@ -17,8 +17,6 @@
 #include "duckdb/main/connection_manager.hpp"
 #include "duckdb/planner/extension_callback.hpp"
 
-#include <dlfcn.h>
-
 namespace duckdb {
 
 //----------------------------------------------------------------------------------------------------------------------
