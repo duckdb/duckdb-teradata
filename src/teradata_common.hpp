@@ -34,7 +34,7 @@ extern char OSERRVersion[];
 namespace duckdb {
 
 struct TeradataCLIV2 {
-	static void Load(ClientContext &context);
+	static void Load();
 	static bool IsLoaded();
 };
 

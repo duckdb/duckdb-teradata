@@ -63,14 +63,9 @@ static bool TryPath(const char* str, void* &handle, vector<string> &errors) {
 }
 
 
-static void* TryLoadCLIV2(const string &override_path) {
+static void* TryLoadCLIV2() {
 	vector<string> errors;
 	void* handle = nullptr;
-
-	// Try the user-specified override path first
-	if (TryPath(override_path.c_str(), handle, errors)) {
-		return handle;
-	}
 
 	// Otherwise, check some default paths
 	for (const auto path : CLIV2_SEARCH_PATHS) {
@@ -87,19 +82,13 @@ bool TeradataCLIV2::IsLoaded() {
 	return IsLoadedInternal();
 }
 
-void TeradataCLIV2::Load(ClientContext &context) {
+void TeradataCLIV2::Load() {
 	lock_guard<mutex> lock(load_mutex);
 	if (IsLoadedInternal()) {
 		return;
 	}
 
-	Value cliv2_lib_path_value;
-	string cliv2_lib_path;
-	if (context.TryGetCurrentSetting("teradata_cliv2_library_path", cliv2_lib_path_value)) {
-		cliv2_lib_path = cliv2_lib_path_value.GetValue<string>();
-	}
-
-	const auto cliv2_handle = TryLoadCLIV2(cliv2_lib_path);
+	const auto cliv2_handle = TryLoadCLIV2();
 
 	// Load the DBCHINI and DBCHCL functions from the Teradata library
 	DBCHINI_IMPL = reinterpret_cast<td_callback>(dlsym(cliv2_handle, "DBCHINI"));

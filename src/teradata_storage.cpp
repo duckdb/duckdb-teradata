@@ -12,7 +12,7 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
                                           AccessMode access_mode) {
 
 	// Attempt to load the Teradata CLIV2 library
-	TeradataCLIV2::Load(context);
+	TeradataCLIV2::Load();
 
 	string host;
 	string user;
