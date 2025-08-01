@@ -25,7 +25,7 @@ static bool IsLoadedInternal() {
 	On 64-bit Windows, the default installation directory for 64-bit files is:
 		%ProgramFiles%\Teradata\ Client\<release_number>\bin
  */
-static const char* CLIV2_SEARCH_PATHS[] = {
+static const char* const CLIV2_SEARCH_PATHS[] = {
 #if defined(__APPLE__)
 	"libcliv2.dylib",
 	"/Library/Application Support/teradata/client/20.00/lib/libcliv2.dylib",
@@ -93,12 +93,12 @@ void TeradataCLIV2::Load() {
 	// Load the DBCHINI and DBCHCL functions from the Teradata library
 	DBCHINI_IMPL = reinterpret_cast<td_callback>(dlsym(cliv2_handle, "DBCHINI"));
 	if (!DBCHINI_IMPL) {
-		throw IOException("Failed to load DBCHINI from Teradata library: %s", dlerror());
+		throw IOException("Failed to load DBCHINI from Teradata library: %s", GetDLError());
 	}
 
 	DBCHCL_IMPL = reinterpret_cast<td_callback>(dlsym(cliv2_handle, "DBCHCL"));
 	if (!DBCHCL_IMPL) {
-		throw IOException("Failed to load DBCHCL from Teradata library: %s", dlerror());
+		throw IOException("Failed to load DBCHCL from Teradata library: %s", GetDLError());
 	}
 }
 
