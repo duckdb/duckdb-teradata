@@ -13,6 +13,7 @@ project(${TARGET_NAME})
 
 include_directories(src)
 set(EXTENSION_SOURCES
+    src/teradata_common.cpp
     src/teradata_extension.cpp
     src/teradata_secret.cpp
     src/teradata_storage.cpp
@@ -42,16 +43,19 @@ set(EXTENSION_SOURCES
 
 # Teradata on macos
 if(APPLE)
-  set(TD_INCLUDE_DIR
-      "/Library/Application\ Support/teradata/client/20.00/include")
-  set(TD_LIBRARY_DIR "/Library/Application\ Support/teradata/client/20.00/lib")
+  set(TD_INCLUDE_DIR "/Library/Application\ Support/teradata/client/20.00/include")
 endif()
 
 # on linux (ubuntu has the lib64 suffix)
 if(UNIX AND NOT APPLE)
   set(TD_INCLUDE_DIR "/opt/teradata/client/20.00/include")
-  set(TD_LIBRARY_DIR "/opt/teradata/client/20.00/lib64")
 endif()
+
+# on windows
+if (WIN32)
+  set(TD_INCLUDE_DIR "C:/Program Files/teradata/client/20.00/include")
+endif ()
+
 
 find_library(
   TD_CLIV2
@@ -73,17 +77,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
   target_compile_options(${EXTENSION_NAME} PRIVATE -Wno-deprecated-register)
 endif()
 
-target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include
-                                                              ${TD_INCLUDE_DIR})
+target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include ${TD_INCLUDE_DIR})
 target_include_directories(${EXTENSION_NAME} PRIVATE include ${TD_INCLUDE_DIR})
 
-target_link_libraries(${LOADABLE_EXTENSION_NAME} ${TD_CLIV2} ${TD_USR})
-target_link_libraries(${EXTENSION_NAME} ${TD_CLIV2} ${TD_USR})
-
-# This is garbage file(COPY ${TD_CLIV2} DESTINATION "${CMAKE_BINARY_DIR}")
-# file(COPY ${TD_USR} DESTINATION "${CMAKE_BINARY_DIR}")
-file(COPY ${TD_CLIV2} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}")
-file(COPY ${TD_USR} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}")
 
 install(
   TARGETS ${EXTENSION_NAME}

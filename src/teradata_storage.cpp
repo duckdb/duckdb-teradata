@@ -11,6 +11,9 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
                                           AttachedDatabase &db, const string &name, AttachInfo &info,
                                           AccessMode access_mode) {
 
+	// Attempt to load the Teradata CLIV2 library
+	TeradataCLIV2::Load(context);
+
 	string host;
 	string user;
 	string database;

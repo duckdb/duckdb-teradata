@@ -6,6 +6,7 @@
 #include "teradata_storage.hpp"
 #include "teradata_secret.hpp"
 #include "teradata_clear_cache.hpp"
+#include "teradata_common.hpp"
 
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
@@ -15,6 +16,8 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/main/connection_manager.hpp"
 #include "duckdb/planner/extension_callback.hpp"
+
+#include <dlfcn.h>
 
 namespace duckdb {
 
@@ -82,6 +85,11 @@ void TeradataExtension::Load(DuckDB &db) {
 		"teradata_use_primary_index",
 		"Whether or not to use a primary index when creating Teradata tables",
 		LogicalType::BOOLEAN, Value::BOOLEAN(true));
+
+	instance.config.AddExtensionOption(
+		"teradata_cliv2_library_path",
+		"Path to the Teradata CLIV2 library. If not set, DuckDB will try to load the library from the default locations.",
+		LogicalType::VARCHAR, Value(""));
 }
 
 std::string TeradataExtension::Name() {
