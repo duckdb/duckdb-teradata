@@ -44,16 +44,16 @@ static const char* CLIV2_SEARCH_PATHS[] = {
 #endif
 #if defined(__linux__)
 	"libcliv2.so",
-	"opt/teradata/client/20.00/lib64",
-	"opt/teradata/client/17.20/lib64",
-	"opt/teradata/client/17.10/lib64",
-	"opt/teradata/client/17.00/lib64",
-	"opt/teradata/client/16.20/lib64",
+	"opt/teradata/client/20.00/lib64/libcliv2.so",
+	"opt/teradata/client/17.20/lib64/libcliv2.so",
+	"opt/teradata/client/17.10/lib64/libcliv2.so",
+	"opt/teradata/client/17.00/lib64/libcliv2.so",
+	"opt/teradata/client/16.20/lib64/libcliv2.so",
 #endif
 };
 
 static bool TryPath(const char* str, void* &handle, vector<string> &errors) {
-	const auto new_handle = dlopen(str, RTLD_LAZY | RTLD_GLOBAL);
+	const auto new_handle = dlopen(str, RTLD_NOW | RTLD_LOCAL);
 	if (new_handle) {
 		handle = new_handle;
 		return true;
