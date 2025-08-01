@@ -45,7 +45,7 @@ def install_linux_amd64():
         print(f"Setup script {setup_script_path} not found. Please ensure the tar.gz file contains it.")
         exit(1)
 
-    code = os.system(f"sudo bash {setup_script_path} a")
+    code = os.system(f"bash {setup_script_path} a")
     if code != 0:
         print("Failed to run the setup script. Please check the script and try again.")
         exit(1)
@@ -67,12 +67,15 @@ def main():
 
     print("Installing Teradata Dynamic Libraries for platform:", platform)
 
-    if platform == "linux_amd64" and in_docker:
+    if platform == "linux_amd64":
+        if not in_docker:
+            print("This script is intended to be run in a Docker container.")
+            return
+
         install_linux_amd64()
         return
 
     print("Unsupported platform:", platform)
-
 
 if __name__ == "__main__":
     main()
