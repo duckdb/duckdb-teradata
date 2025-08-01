@@ -5,7 +5,7 @@ namespace duckdb {
 class DatabaseInstance;
 
 struct TeradataSecret {
-	static constexpr auto TYPE = "teradata";
+	static const char* TYPE;
 
 	static void Register(DatabaseInstance &db);
 	static bool TryGet(ClientContext &context, const string &name, TeradataSecret &out);

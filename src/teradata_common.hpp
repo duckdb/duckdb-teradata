@@ -32,27 +32,10 @@ extern char OSERRVersion[];
 #endif
 
 namespace duckdb {
-//
-// struct TeradataTypeData {
-// 	string type_name;
-// 	string column_type;
-// 	int64_t precision;
-// 	int64_t scale;
-// };
-//
-// enum class TeradataTypeAnnotation : uint8_t {
-// 	STANDARD,
-// 	CAST_TO_VARCHAR,
-// 	NUMERIC_AS_DOUBLE,
-// 	CTID,
-// 	JSONB,
-// 	FIXED_LENGTH_CHAR
-// };
-//
-// struct TeradataType {
-// 	idx_t oid = 0;
-// 	TeradataTypeAnnotation info = TeradataTypeAnnotation::STANDARD;
-// 	vector<TeradataType> children;
-// };
+
+struct TeradataCLIV2 {
+	static void Load();
+	static bool IsLoaded();
+};
 
 } // namespace duckdb

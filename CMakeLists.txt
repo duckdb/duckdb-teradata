@@ -13,6 +13,7 @@ project(${TARGET_NAME})
 
 include_directories(src)
 set(EXTENSION_SOURCES
+    src/teradata_common.cpp
     src/teradata_extension.cpp
     src/teradata_secret.cpp
     src/teradata_storage.cpp
@@ -40,27 +41,16 @@ set(EXTENSION_SOURCES
     src/teradata_secret.cpp
     src/teradata_delete_update.cpp)
 
-# Teradata on macos
-if(APPLE)
-  set(TD_INCLUDE_DIR
-      "/Library/Application\ Support/teradata/client/20.00/include")
-  set(TD_LIBRARY_DIR "/Library/Application\ Support/teradata/client/20.00/lib")
-endif()
+# Teradata on macos if(APPLE) set(TD_INCLUDE_DIR "/Library/Application\
+# Support/teradata/client/20.00/include") endif()
 
-# on linux (ubuntu has the lib64 suffix)
-if(UNIX AND NOT APPLE)
-  set(TD_INCLUDE_DIR "/opt/teradata/client/20.00/include")
-  set(TD_LIBRARY_DIR "/opt/teradata/client/20.00/lib64")
-endif()
+# on linux (ubuntu has the lib64 suffix) if(UNIX AND NOT APPLE)
+# set(TD_INCLUDE_DIR "/opt/teradata/client/20.00/include") endif()
 
-find_library(
-  TD_CLIV2
-  NAMES libcliv2 libcliv2.so libcliv2.dylib
-  PATHS ${TD_LIBRARY_DIR} REQUIRED)
-find_library(
-  TD_USR
-  NAMES libtdusr libtdusr.so libtdusr.dylib
-  PATHS ${TD_LIBRARY_DIR} REQUIRED)
+# on windows if (WIN32) set(TD_INCLUDE_DIR "C:/Program
+# Files/teradata/client/20.00/include") endif ()
+
+set(TD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/teradata")
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
@@ -76,14 +66,6 @@ endif()
 target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include
                                                               ${TD_INCLUDE_DIR})
 target_include_directories(${EXTENSION_NAME} PRIVATE include ${TD_INCLUDE_DIR})
-
-target_link_libraries(${LOADABLE_EXTENSION_NAME} ${TD_CLIV2} ${TD_USR})
-target_link_libraries(${EXTENSION_NAME} ${TD_CLIV2} ${TD_USR})
-
-# This is garbage file(COPY ${TD_CLIV2} DESTINATION "${CMAKE_BINARY_DIR}")
-# file(COPY ${TD_USR} DESTINATION "${CMAKE_BINARY_DIR}")
-file(COPY ${TD_CLIV2} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}")
-file(COPY ${TD_USR} DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}")
 
 install(
   TARGETS ${EXTENSION_NAME}

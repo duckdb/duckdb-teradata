@@ -7,7 +7,7 @@
 
 namespace duckdb {
 
-const char *const TeradataSecret::TYPE;
+const char* TeradataSecret::TYPE = "teradata";
 
 static unique_ptr<BaseSecret> CreateTeradataSecretFunction(ClientContext &context, CreateSecretInput &input) {
 	vector<string> prefix_paths;

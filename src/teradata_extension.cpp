@@ -6,6 +6,7 @@
 #include "teradata_storage.hpp"
 #include "teradata_secret.hpp"
 #include "teradata_clear_cache.hpp"
+#include "teradata_common.hpp"
 
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
@@ -82,6 +83,7 @@ void TeradataExtension::Load(DuckDB &db) {
 		"teradata_use_primary_index",
 		"Whether or not to use a primary index when creating Teradata tables",
 		LogicalType::BOOLEAN, Value::BOOLEAN(true));
+
 }
 
 std::string TeradataExtension::Name() {
