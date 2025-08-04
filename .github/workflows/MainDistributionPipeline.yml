@@ -38,8 +38,6 @@ jobs:
             "TD_DB": "${{ vars.TD_DB }}"
           }
         }
-    secrets:
-      TD_LOGON: ${{ secrets.TD_LOGON }}
 
   duckdb-latest-deploy:
     name: Deploy extension binaries
