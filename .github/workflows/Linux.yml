@@ -32,10 +32,10 @@ jobs:
           sudo apt-get update -y -qq
           sudo apt-get install -y -qq build-essential cmake ninja-build ccache python3 wget
 
-      - name: Install Teradata tools
+      - name: Install Teradata Tools and Utilities
         run: |
-          
-          tar -xvf td_linux.tar.gz
+          wget https://test-bucket-ceiveran.s3.eu-west-1.amazonaws.com/td_ubuntu_20.tar.gz
+          tar -xvf td_ubuntu_20.tar.gz
           cd TeradataToolsAndUtilitiesBase && sudo ./setup.sh a
           cd ..
 
@@ -60,10 +60,6 @@ jobs:
         uses: lukka/run-vcpkg@v11.1
         with:
           vcpkgGitCommitId: a42af01b72c28a8e1d7b48107b33e4f286a55ef6
-
-      - name: Install Teradata Tools and Utilities
-        run:
-          python3 install_teradata.py
 
       - name: Build extension
         env:
