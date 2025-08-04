@@ -35,7 +35,7 @@ jobs:
       test_config: >
         {"test_env_variables":
           {
-            "TD_LOGON": "${{ contains(fromJSON('["linux_amd64"]'), env.DUCKDB_PLATFORM) && secrets.TD_LOGON || '' }}",
+            "TD_LOGON": "${{ secrets.TD_LOGON }}",
             "TD_DB": "${{ vars.TD_DB }}"
           }
         }
