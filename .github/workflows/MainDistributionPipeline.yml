@@ -32,6 +32,13 @@ jobs:
       vcpkg_commit: ce613c41372b23b1f51333815feb3edd87ef8a8b
       # Only build for "linux_amd64", "linux_arm64", "osx_arm64", "osx_amd64", "windows_amd64"
       exclude_archs: linux_amd64_musl;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads
+      test_config: >
+        {"test_env_variables":
+          {
+            "TD_LOGON": "${{ contains(fromJSON('["linux_amd64"]'), env.DUCKDB_PLATFORM) && secrets.TD_LOGON || '' }}",
+            "TD_DB": "${{ vars.TD_DB }}"
+          }
+        }
 
   duckdb-latest-deploy:
     name: Deploy extension binaries
