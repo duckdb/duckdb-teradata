@@ -39,6 +39,7 @@ jobs:
             "TD_DB": "${{ vars.TD_DB }}"
           }
         }
+    secrets: inherit
 
   duckdb-latest-deploy:
     name: Deploy extension binaries
