@@ -43,3 +43,5 @@ jobs:
       ci_tools_version: main
       extension_name: teradata
       deploy_latest: ${{ startsWith(github.ref, 'refs/heads/v') || github.ref == 'refs/heads/main' }}
+      exclude_archs: linux_arm64;linux_amd64_musl;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads
+      # Only build for "linux_amd64", "osx_arm64", "osx_amd64", "windows_amd64"
