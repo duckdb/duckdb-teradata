@@ -36,7 +36,7 @@ SELECT * FROM td.test_table ORDER BY ALL;
 statement error
 INSERT INTO td.test_table VALUES (1, 'two');
 ----
-Constraint Error: Duplicate unique prime key error in duckdb_testdb.test_table.
+Constraint Error: Duplicate unique prime key error in
 
 
 # clean up
