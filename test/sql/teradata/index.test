@@ -36,15 +36,15 @@ SELECT * FROM td.test_table ORDER BY ALL;
 statement ok
 CREATE UNIQUE INDEX test_table_idx ON td.test_table(id);
 
-query IIIIII
-SELECT database_name, schema_name, table_name, index_name, is_unique, is_primary FROM duckdb_indexes();
+query IIIII
+SELECT database_name, table_name, index_name, is_unique, is_primary FROM duckdb_indexes();
 ----
-td		duckdb_testdb	test_table	test_table_idx	1	0
+td	test_table	test_table_idx	1	0
 
 statement error
 INSERT INTO td.test_table VALUES (1, 'two');
 ----
-Constraint Error: Secondary index uniqueness violation in duckdb_testdb.test_table.
+Constraint Error: Secondary index uniqueness violation in
 
 # clean up
 statement ok
