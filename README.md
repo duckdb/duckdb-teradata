@@ -2,6 +2,8 @@
 
 This is a DuckDB extension for connecting to and "attach":ing Teradata databases as if they were part of the DuckDB catalog. It allows you to manipulate tables, query data, and execute raw SQL commands directly on the Teradata database using DuckDB, by either pushing part of queries down into Teradata or by pulling data up into DuckDB for further processing.
 
+**Duckdb labs gratefully acknowledges support from Teradata Corporation for the creation of this duckdb extension.**
+
 ## Table of Contents
 <!-- TOC -->
 * [Usage](#usage)
@@ -17,6 +19,9 @@ This is a DuckDB extension for connecting to and "attach":ing Teradata databases
 <!-- TOC -->
 
 # Usage
+
+This extension currently requires the [Teradata Tools and Utilities](https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Introduction/Vantage-and-Tools/Teradata-Tools-and-Utilities) dynamic libraries to be installed on your machine. You can download them at the following links for [windows](https://downloads.teradata.com/download/database/teradata-tools-and-utilities-13-10), [macos](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-mac-osx-installation-package), and [linux](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-linux-installation-package-0). In the future we hope to distribute this extension with the required libraries statically linked to remove this requirement.
+
 
 ## Attaching to Teradata
 
