@@ -2,7 +2,7 @@
 
 This is a DuckDB extension for connecting to and "attach":ing Teradata databases as if they were part of the DuckDB catalog. It allows you to manipulate tables, query data, and execute raw SQL commands directly on the Teradata database using DuckDB, by either pushing part of queries down into Teradata or by pulling data up into DuckDB for further processing.
 
-**Duckdb labs gratefully acknowledges support from Teradata Corporation for the creation of this duckdb extension.**
+**DuckDB Labs gratefully acknowledges support from the Teradata Corporation for the creation of this DuckDB extension.**
 
 ## Table of Contents
 <!-- TOC -->
