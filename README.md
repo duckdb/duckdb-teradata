@@ -20,19 +20,19 @@ This is a DuckDB extension for connecting to and "attach":ing Teradata databases
 
 # Usage
 
-This extension currently requires the [Teradata Tools and Utilities](https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Introduction/Vantage-and-Tools/Teradata-Tools-and-Utilities) dynamic libraries to be installed on your machine. You can download them at the following links for [windows](https://downloads.teradata.com/download/database/teradata-tools-and-utilities-13-10), [macos](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-mac-osx-installation-package), and [linux](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-linux-installation-package-0). In the future we hope to distribute this extension with the required libraries statically linked to remove this requirement.
+This extension currently requires the [Teradata Tools and Utilities](https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Introduction/Vantage-and-Tools/Teradata-Tools-and-Utilities) dynamic libraries to be installed on your machine. You can download them at the following links for [Windows](https://downloads.teradata.com/download/database/teradata-tools-and-utilities-13-10), [macOS](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-mac-osx-installation-package), and [Linux](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-linux-installation-package-0). In the future we hope to distribute this extension with the required libraries statically linked to remove this requirement.
 
 
 ## Attaching to Teradata
 
-Once the extension is loaded, you can attach DuckDB to a teradata system by executing the following SQL:
+Once the extension is loaded, you can attach DuckDB to a Teradata system by executing the following SQL:
 
 ```sql
 ATTACH
 '{logon string}' as {database name} (TYPE TERADATA);
 ```
 
-This will mount the database corresponding to the username specified in the terdata "logon string" (on the form "
+This will mount the database corresponding to the username specified in the Teradata "logon string" (on the form "
 host/username,password"). To attach to a specific teradata database, provide the optional `DATABASE '{name}'` parameter
 to the `ATTACH` command:
 
@@ -41,7 +41,7 @@ ATTACH
 '{logon string}' as {database name} (TYPE TERADATA, DATABASE '{teradata database name}');
 ```
 
-Here's a complete example connecting to a teradata instance running on localhost as the `dbc` user (with password `dbc`)
+Here's a complete example connecting to a Teradata instance running on localhost as the `dbc` user (with password `dbc`)
 and attaching the database `my_db` as `td` from within duckdb:
 
 ```sql
@@ -59,7 +59,7 @@ The following table illustrates all available `ATTACH` options when attaching to
 | `HOST`        | The host to connect to, e.g. `127.0.0.1` or `localhost`.                                                                                |
 | `USER`        | The username to connect with, e.g. `dbc`.                                                                                               |
 | `PASSWORD`    | The password to use, e.g. `dbc`.                                                                                                        |
-| `DATABASE`    | The teradata database to attach, e.g. `my_db`. This is optional and defaults to the user database.                                      |
+| `DATABASE`    | The Teradata database to attach, e.g. `my_db`. This is optional and defaults to the user database.                                      |
 | `BUFFER_SIZE` | The size of the response buffer used to fetch data from Teradata. This can be used to tune performance. Defaults to 1MiB (1024 * 1024). | 
 
 ### Using Secrets
@@ -105,42 +105,42 @@ defined in the `ATTACH` command takes precedence over those defined in the secre
 
 ## Querying data
 
-Once a teradata database is attached, you can query data from its tables using standard SQL queries, e.g.:
+Once a Teradata database is attached, you can query data from its tables using standard SQL queries, e.g.:
 
 ```sql
--- Attach a teradata database using a secret
+-- Attach a Teradata database using a secret
 ATTACH
 '' as td (TYPE TERADATA, SECRET my_secret);
    
--- Query data from a table in the teradata database
+-- Query data from a table in the Teradata database
 SELECT * FROM td.my_table WHERE id = 42;
 ```
 
-Most standard SQL queries are supported, including `SELECT`, `INSERT`, `UPDATE`, and `DELETE`. These also support filter-pushdown for simple predicates, allowing you to filter data directly on the teradata side before it is returned to DuckDB.
+Most standard SQL queries are supported, including `SELECT`, `INSERT`, `UPDATE`, and `DELETE`. These also support filter-pushdown for simple predicates, allowing you to filter data directly on the Teradata side before it is returned to DuckDB.
 
 However, some Teradata-specific features may not be fully supported, and not all catalog operations are currently implemented either.
-Therefore, you may sometime want to send and execute a raw SQL string directly to teradata, using the `teradata_query`
+Therefore, you may sometime want to send and execute a raw SQL string directly to Teradata, using the `teradata_query`
 function.
 
 ### Sending raw SQL queries to Teradata
 
-The `teradata_query` function can be used to send raw SQL queries directly to the teradata database. This is useful for
+The `teradata_query` function can be used to send raw SQL queries directly to the Teradata database. This is useful for
 executing queries that may not be fully supported by DuckDB's SQL parser or for using Teradata-specific features.
 
 The `teradata_query` function takes two parameters:
 
-- The name of the attached teradata database (e.g. `td`).
-- The raw SQL query string to execute on the teradata database.
+- The name of the attached Teradata database (e.g. `td`).
+- The raw SQL query string to execute on the Teradata database.
 
-Example usage, executing a raw SQL query to select data from a table in the teradata database, instead of going through
+Example usage, executing a raw SQL query to select data from a table in the Teradata database, instead of going through
 DuckDB's SQL parser:
 
 ```sql
 SELECT teradata_query('td', 'SEL * FROM my_table WHERE id = 42');
 ```
 
-For convenience, the teradata extension will also automatically register a database-scoped macro in each attached
-teradata database called `query()`, which can be used to execute raw SQL queries in a more concise way. The following
+For convenience, the Teradata extension will also automatically register a database-scoped macro in each attached
+Teradata database called `query()`, which can be used to execute raw SQL queries in a more concise way. The following
 example is equivalent to the previous one, but uses the `query()` macro instead:
 
 ```sql
@@ -156,10 +156,10 @@ commands not currently implemented in the DuckDB Teradata extension.
 The `teradata_execute` function works similarly to `teradata_query`, but it does not return any results. Instead, it
 simply executes the command on the teradata database. It similarly takes two parameters:
 
-- The name of the attached teradata database (e.g. `td`).
-- The raw SQL command string to execute on the teradata database.
+- The name of the attached Teradata database (e.g. `td`).
+- The raw SQL command string to execute on the Teradata database.
 
-The following example shows how to use `teradata_execute` to create a new table in the teradata database, instead of
+The following example shows how to use `teradata_execute` to create a new table in the Teradata database, instead of
 using the DuckDB `CREATE TABLE` statement:
 
 ```sql
