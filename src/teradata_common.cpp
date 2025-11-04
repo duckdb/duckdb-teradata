@@ -14,58 +14,57 @@ static bool IsLoadedInternal() {
 }
 
 /*
-	https://docs.teradata.com/r/Enterprise_IntelliFlex_Lake_VMware/Teradata-Call-Level-Interface-Version-2-Reference-for-Workstation-Attached-Systems-20.00/CLI-Files-and-Setup/Finding-CLI-Files-on-the-System
+    https://docs.teradata.com/r/Enterprise_IntelliFlex_Lake_VMware/Teradata-Call-Level-Interface-Version-2-Reference-for-Workstation-Attached-Systems-20.00/CLI-Files-and-Setup/Finding-CLI-Files-on-the-System
 
-	On all 64-bit UNIX platforms, the default installation directory for:
-		/opt/teradata/client/<release_number>/lib64
+    On all 64-bit UNIX platforms, the default installation directory for:
+        /opt/teradata/client/<release_number>/lib64
 
-	On Apple macOS platforms, the default installation directory is:
-		/Library/Application Support/teradata/client/<release_number>/lib
+    On Apple macOS platforms, the default installation directory is:
+        /Library/Application Support/teradata/client/<release_number>/lib
 
-	On 64-bit Windows, the default installation directory for 64-bit files is:
-		%ProgramFiles%\Teradata\ Client\<release_number>\bin
+    On 64-bit Windows, the default installation directory for 64-bit files is:
+        %ProgramFiles%\Teradata\ Client\<release_number>\bin
  */
-static const char* const CLIV2_SEARCH_PATHS[] = {
+static const char *const CLIV2_SEARCH_PATHS[] = {
 #if defined(__APPLE__)
-	"libcliv2.dylib",
-	"/Library/Application Support/teradata/client/20.00/lib/libcliv2.dylib",
-	"/Library/Application Support/teradata/client/17.20/lib/libcliv2.dylib",
-	"/Library/Application Support/teradata/client/17.10/lib/libcliv2.dylib",
-	"/Library/Application Support/teradata/client/17.00/lib/libcliv2.dylib",
-	"/Library/Application Support/teradata/client/16.20/lib/libcliv2.dylib",
+    "libcliv2.dylib",
+    "/Library/Application Support/teradata/client/20.00/lib/libcliv2.dylib",
+    "/Library/Application Support/teradata/client/17.20/lib/libcliv2.dylib",
+    "/Library/Application Support/teradata/client/17.10/lib/libcliv2.dylib",
+    "/Library/Application Support/teradata/client/17.00/lib/libcliv2.dylib",
+    "/Library/Application Support/teradata/client/16.20/lib/libcliv2.dylib",
 #endif
 #if defined(_WIN32)
-	"libcliv2.dll",
-	"C:\\Program Files\\Teradata\\Client\\20.00\\bin\\libcliv2.dll",
-	"C:\\Program Files\\Teradata\\Client\\17.20\\bin\\libcliv2.dll",
-	"C:\\Program Files\\Teradata\\Client\\17.10\\bin\\libcliv2.dll",
-	"C:\\Program Files\\Teradata\\Client\\17.00\\bin\\libcliv2.dll",
-	"C:\\Program Files\\Teradata\\Client\\16.20\\bin\\libcliv2.dll",
+    "libcliv2.dll",
+    "C:\\Program Files\\Teradata\\Client\\20.00\\bin\\libcliv2.dll",
+    "C:\\Program Files\\Teradata\\Client\\17.20\\bin\\libcliv2.dll",
+    "C:\\Program Files\\Teradata\\Client\\17.10\\bin\\libcliv2.dll",
+    "C:\\Program Files\\Teradata\\Client\\17.00\\bin\\libcliv2.dll",
+    "C:\\Program Files\\Teradata\\Client\\16.20\\bin\\libcliv2.dll",
 #endif
 #if defined(__linux__)
-	"libcliv2.so",
-	"opt/teradata/client/20.00/lib64/libcliv2.so",
-	"opt/teradata/client/17.20/lib64/libcliv2.so",
-	"opt/teradata/client/17.10/lib64/libcliv2.so",
-	"opt/teradata/client/17.00/lib64/libcliv2.so",
-	"opt/teradata/client/16.20/lib64/libcliv2.so",
+    "libcliv2.so",
+    "opt/teradata/client/20.00/lib64/libcliv2.so",
+    "opt/teradata/client/17.20/lib64/libcliv2.so",
+    "opt/teradata/client/17.10/lib64/libcliv2.so",
+    "opt/teradata/client/17.00/lib64/libcliv2.so",
+    "opt/teradata/client/16.20/lib64/libcliv2.so",
 #endif
 };
 
-static bool TryPath(const char* str, void* &handle, vector<string> &errors) {
+static bool TryPath(const char *str, void *&handle, vector<string> &errors) {
 	const auto new_handle = dlopen(str, RTLD_NOW | RTLD_LOCAL);
 	if (new_handle) {
 		handle = new_handle;
 		return true;
 	}
-	errors.push_back( GetDLError());
+	errors.push_back(GetDLError());
 	return false;
 }
 
-
-static void* TryLoadCLIV2() {
+static void *TryLoadCLIV2() {
 	vector<string> errors;
-	void* handle = nullptr;
+	void *handle = nullptr;
 
 	// Otherwise, check some default paths
 	for (const auto path : CLIV2_SEARCH_PATHS) {
@@ -82,8 +81,15 @@ bool TeradataCLIV2::IsLoaded() {
 	return IsLoadedInternal();
 }
 
-void TeradataCLIV2::Load() {
+void TeradataCLIV2::Load(ClientContext &context) {
 	lock_guard<mutex> lock(load_mutex);
+
+	// Check if external access is allowed
+	if (!context.db->config.options.enable_external_access) {
+		throw PermissionException(
+		    "Loading the Teradata CLIV2 library is not possible as external access is disabled through configuration");
+	}
+
 	if (IsLoadedInternal()) {
 		return;
 	}
@@ -103,7 +109,6 @@ void TeradataCLIV2::Load() {
 }
 
 } // namespace duckdb
-
 
 Int32 DBCHINI(Int32 *a, char *b, struct DBCAREA *c) {
 	if (duckdb::DBCHINI_IMPL) {
