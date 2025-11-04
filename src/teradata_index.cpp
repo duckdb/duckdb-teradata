@@ -13,8 +13,10 @@ namespace duckdb {
 //----------------------------------------------------------------------------------------------------------------------
 // Physical Operator
 //----------------------------------------------------------------------------------------------------------------------
-PhysicalTeradataCreateIndex::PhysicalTeradataCreateIndex(unique_ptr<CreateIndexInfo> info, TableCatalogEntry &table)
-    : PhysicalOperator(PhysicalOperatorType::EXTENSION, {LogicalType::BIGINT}, 1), info(std::move(info)), table(table) {
+PhysicalTeradataCreateIndex::PhysicalTeradataCreateIndex(PhysicalPlan &plan, unique_ptr<CreateIndexInfo> info,
+                                                         TableCatalogEntry &table)
+    : PhysicalOperator(plan, PhysicalOperatorType::EXTENSION, {LogicalType::BIGINT}, 1), info(std::move(info)),
+      table(table) {
 }
 
 SourceResultType PhysicalTeradataCreateIndex::GetData(ExecutionContext &context, DataChunk &chunk,

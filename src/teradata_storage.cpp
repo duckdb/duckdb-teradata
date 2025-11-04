@@ -7,9 +7,9 @@
 
 namespace duckdb {
 
-static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, ClientContext &context,
+static unique_ptr<Catalog> TeradataAttach(optional_ptr<StorageExtensionInfo> storage_info, ClientContext &context,
                                           AttachedDatabase &db, const string &name, AttachInfo &info,
-                                          AccessMode access_mode) {
+                                          AttachOptions &attach_options) {
 
 	// Attempt to load the Teradata CLIV2 library
 	TeradataCLIV2::Load();
@@ -145,7 +145,7 @@ static unique_ptr<Catalog> TeradataAttach(StorageExtensionInfo *storage_info, Cl
 	return std::move(result);
 }
 
-static unique_ptr<TransactionManager> TeradataCreateTransactionManager(StorageExtensionInfo *storage_info,
+static unique_ptr<TransactionManager> TeradataCreateTransactionManager(optional_ptr<StorageExtensionInfo> storage_info,
                                                                        AttachedDatabase &db, Catalog &catalog) {
 	auto &td_catalog = catalog.Cast<TeradataCatalog>();
 	return make_uniq<TeradataTransactionManager>(db, td_catalog);

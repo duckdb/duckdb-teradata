@@ -2,12 +2,12 @@
 
 namespace duckdb {
 
-class DatabaseInstance;
+class ExtensionLoader;
 
 struct TeradataSecret {
-	static const char* TYPE;
+	static const char *TYPE;
 
-	static void Register(DatabaseInstance &db);
+	static void Register(ExtensionLoader &loader);
 	static bool TryGet(ClientContext &context, const string &name, TeradataSecret &out);
 
 	string host;

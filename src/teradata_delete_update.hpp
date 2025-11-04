@@ -6,7 +6,7 @@ namespace duckdb {
 
 class TeradataDeleteUpdate final : public PhysicalOperator {
 public:
-	TeradataDeleteUpdate(LogicalOperator &op, TableCatalogEntry &table, string name, string query);
+	TeradataDeleteUpdate(PhysicalPlan &plan, LogicalOperator &op, TableCatalogEntry &table, string name, string query);
 
 	//! The table to delete/update from
 	TableCatalogEntry &table;
@@ -28,7 +28,7 @@ public:
 	unique_ptr<GlobalSinkState> GetGlobalSinkState(ClientContext &context) const override;
 	SinkResultType Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const override;
 	SinkFinalizeType Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
-							  OperatorSinkFinalizeInput &input) const override;
+	                          OperatorSinkFinalizeInput &input) const override;
 
 	bool IsSink() const override {
 		return true;

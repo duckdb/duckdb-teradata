@@ -7,7 +7,8 @@ namespace duckdb {
 
 class PhysicalTeradataCreateIndex final : public PhysicalOperator {
 public:
-	explicit PhysicalTeradataCreateIndex(unique_ptr<CreateIndexInfo> info, TableCatalogEntry &table);
+	explicit PhysicalTeradataCreateIndex(PhysicalPlan &plan, unique_ptr<CreateIndexInfo> info,
+	                                     TableCatalogEntry &table);
 
 	unique_ptr<CreateIndexInfo> info;
 	TableCatalogEntry &table;
