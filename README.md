@@ -156,7 +156,7 @@ Example usage, executing a raw SQL query to select data from a table in the Tera
 DuckDB's SQL parser:
 
 ```sql
-SELECT teradata_query('td', 'SEL * FROM my_table WHERE id = 42');
+FROM teradata_query('td', 'SEL * FROM my_table WHERE id = 42');
 ```
 
 For convenience, the Teradata extension will also automatically register a database-scoped macro in each attached
@@ -164,7 +164,7 @@ Teradata database called `query()`, which can be used to execute raw SQL queries
 example is equivalent to the previous one, but uses the `query()` macro instead:
 
 ```sql
-SELECT td.query('SEL * FROM my_table WHERE id = 42');
+FROM td.query('SEL * FROM my_table WHERE id = 42');
 ```
 
 ### Executing raw SQL commands
@@ -183,7 +183,7 @@ The following example shows how to use `teradata_execute` to create a new table 
 using the DuckDB `CREATE TABLE` statement:
 
 ```sql
-SELECT teradata_execute('td', 'CREATE TABLE my_table (id INT, value INT)');
+FROM teradata_execute('td', 'CREATE TABLE my_table (id INT, "value" INT)');
 ```
 
 ## Type mapping
