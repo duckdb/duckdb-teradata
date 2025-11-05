@@ -35,12 +35,12 @@ static const char *const CLIV2_SEARCH_PATHS[] = {
     "/Library/Application Support/teradata/client/16.20/lib/libcliv2.dylib",
 #endif
 #if defined(_WIN32)
-    "libcliv2.dll",
-    "C:\\Program Files\\Teradata\\Client\\20.00\\bin\\libcliv2.dll",
-    "C:\\Program Files\\Teradata\\Client\\17.20\\bin\\libcliv2.dll",
-    "C:\\Program Files\\Teradata\\Client\\17.10\\bin\\libcliv2.dll",
-    "C:\\Program Files\\Teradata\\Client\\17.00\\bin\\libcliv2.dll",
-    "C:\\Program Files\\Teradata\\Client\\16.20\\bin\\libcliv2.dll",
+    "wincli32.dll",
+    "C:\\Program Files\\Teradata\\Client\\20.00\\bin\\wincli32.dll",
+    "C:\\Program Files\\Teradata\\Client\\17.20\\bin\\wincli32.dll",
+    "C:\\Program Files\\Teradata\\Client\\17.10\\bin\\wincli32.dll",
+    "C:\\Program Files\\Teradata\\Client\\17.00\\bin\\wincli32.dll",
+    "C:\\Program Files\\Teradata\\Client\\16.20\\bin\\wincli32.dll",
 #endif
 #if defined(__linux__)
     "libcliv2.so",
