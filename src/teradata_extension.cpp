@@ -1,5 +1,3 @@
-#define DUCKDB_EXTENSION_MAIN
-
 #include "teradata_extension.hpp"
 #include "teradata_query.hpp"
 #include "teradata_execute.hpp"
@@ -12,7 +10,7 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
-#include "duckdb/main/extension_util.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/main/connection_manager.hpp"
 #include "duckdb/planner/extension_callback.hpp"
@@ -59,14 +57,14 @@ class TeradataExtensionCallback final : public ExtensionCallback {
 // Extension Load
 //----------------------------------------------------------------------------------------------------------------------
 
-void TeradataExtension::Load(DuckDB &db) {
-	auto &instance = *db.instance;
+static void LoadInternal(ExtensionLoader &loader) {
+	auto &instance = loader.GetDatabaseInstance();
 
 	// Register Teradata functions
-	TeradataQueryFunction::Register(instance);
-	TeradataExecuteFunction::Register(instance);
-	TeradataClearCacheFunction::Register(instance);
-	TeradataSecret::Register(instance);
+	TeradataQueryFunction::Register(loader);
+	TeradataExecuteFunction::Register(loader);
+	TeradataClearCacheFunction::Register(loader);
+	TeradataSecret::Register(loader);
 
 	// Register storage
 	instance.config.storage_extensions["teradata"] = make_uniq<TeradataStorageExtension>();
@@ -79,39 +77,24 @@ void TeradataExtension::Load(DuckDB &db) {
 		con->registered_state->Insert("teradata_extension", make_shared_ptr<TeradataExtensionState>());
 	}
 
-	instance.config.AddExtensionOption(
-		"teradata_use_primary_index",
-		"Whether or not to use a primary index when creating Teradata tables",
-		LogicalType::BOOLEAN, Value::BOOLEAN(true));
+	instance.config.AddExtensionOption("teradata_use_primary_index",
+	                                   "Whether or not to use a primary index when creating Teradata tables",
+	                                   LogicalType::BOOLEAN, Value::BOOLEAN(true));
+}
 
+void TeradataExtension::Load(ExtensionLoader &loader) {
+	LoadInternal(loader);
 }
 
 std::string TeradataExtension::Name() {
 	return "teradata";
 }
 
-std::string TeradataExtension::Version() const {
-#ifdef EXT_VERSION_TERADATA
-	return EXT_VERSION_TERADATA;
-#else
-	return "";
-#endif
-}
-
 } // namespace duckdb
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void teradata_init(duckdb::DatabaseInstance &db) {
-	duckdb::DuckDB db_wrapper(db);
-	db_wrapper.LoadExtension<duckdb::TeradataExtension>();
-}
-
-DUCKDB_EXTENSION_API const char *teradata_version() {
-	return duckdb::DuckDB::LibraryVersion();
+DUCKDB_CPP_EXTENSION_ENTRY(teradata, loader) {
+	duckdb::LoadInternal(loader);
 }
 }
-
-#ifndef DUCKDB_EXTENSION_MAIN
-#error DUCKDB_EXTENSION_MAIN not defined
-#endif

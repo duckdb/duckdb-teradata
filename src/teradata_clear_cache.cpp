@@ -4,7 +4,7 @@
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/attached_database.hpp"
-#include "duckdb/main/extension_util.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 
 namespace duckdb {
 
@@ -25,7 +25,7 @@ static unique_ptr<FunctionData> ClearCacheBind(ClientContext &context, TableFunc
 void TeradataClearCacheFunction::Clear(ClientContext &context) {
 	auto databases = DatabaseManager::Get(context).GetDatabases(context);
 	for (auto &db_ref : databases) {
-		auto &db = db_ref.get();
+		auto &db = *db_ref.get();
 		auto &catalog = db.GetCatalog();
 		if (catalog.GetCatalogType() != "teradata") {
 			continue;
@@ -43,9 +43,9 @@ static void ClearCacheFunction(ClientContext &context, TableFunctionInput &data_
 	data.finished = true;
 }
 
-void TeradataClearCacheFunction::Register(DatabaseInstance &db) {
+void TeradataClearCacheFunction::Register(ExtensionLoader &loader) {
 	TableFunction func("teradata_clear_cache", {}, ClearCacheFunction, ClearCacheBind);
-	ExtensionUtil::RegisterFunction(db, func);
+	loader.RegisterFunction(func);
 }
 
 } // namespace duckdb

@@ -2,12 +2,12 @@
 
 namespace duckdb {
 
-class DatabaseInstance;
+class ExtensionLoader;
 class ClientContext;
 
 struct TeradataClearCacheFunction {
 	static void Clear(ClientContext &context);
-	static void Register(DatabaseInstance &db);
+	static void Register(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

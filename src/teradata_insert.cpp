@@ -21,15 +21,16 @@ namespace duckdb {
 //======================================================================================================================
 
 // Normal INSERT INTO table
-TeradataInsert::TeradataInsert(LogicalOperator &op, TableCatalogEntry &table,
+TeradataInsert::TeradataInsert(PhysicalPlan &plan, LogicalOperator &op, TableCatalogEntry &table,
                                physical_index_vector_t<idx_t> column_index_map_p)
-    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(&table), schema(nullptr),
+    : PhysicalOperator(plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(&table), schema(nullptr),
       column_index_map(std::move(column_index_map_p)) {
 }
 
 // CREATE TABLE AS
-TeradataInsert::TeradataInsert(LogicalOperator &op, SchemaCatalogEntry &schema, unique_ptr<BoundCreateTableInfo> info)
-    : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(nullptr), schema(&schema),
+TeradataInsert::TeradataInsert(PhysicalPlan &plan, LogicalOperator &op, SchemaCatalogEntry &schema,
+                               unique_ptr<BoundCreateTableInfo> info)
+    : PhysicalOperator(plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(nullptr), schema(&schema),
       info(std::move(info)) {
 }
 
@@ -229,7 +230,7 @@ PhysicalOperator &TeradataCatalog::PlanInsert(ClientContext &context, PhysicalPl
 	if (op.return_chunk) {
 		throw BinderException("RETURNING clause not yet supported for insertion into Teradata tables");
 	}
-	if (op.action_type != OnConflictAction::THROW) {
+	if (op.on_conflict_info.action_type != OnConflictAction::THROW) {
 		throw BinderException("ON CONFLICT clause not yet supported for insertion into Teradata tables");
 	}
 

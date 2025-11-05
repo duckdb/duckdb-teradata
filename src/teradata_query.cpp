@@ -7,7 +7,7 @@
 #include "teradata_transaction.hpp"
 #include "teradata_table_entry.hpp"
 
-#include "duckdb/main/extension_util.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 
 #include <teradata_filter.hpp>
 
@@ -192,8 +192,7 @@ static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, 
 		const auto col_idx = state.column_ids[output_idx];
 
 		if (col_idx == COLUMN_IDENTIFIER_ROW_ID) {
-			throw InvalidInputException(
-			    "Teradata query does not support the row id column (rowid)");
+			throw InvalidInputException("Teradata query does not support the row id column (rowid)");
 		}
 
 		auto &source = state.scan_chunk.data[col_idx]; // col ids
@@ -223,9 +222,9 @@ TableFunction TeradataQueryFunction::GetFunction() {
 	return function;
 }
 
-void TeradataQueryFunction::Register(DatabaseInstance &db) {
+void TeradataQueryFunction::Register(ExtensionLoader &loader) {
 	const auto function = TeradataQueryFunction::GetFunction();
-	ExtensionUtil::RegisterFunction(db, function);
+	loader.RegisterFunction(function);
 }
 
 } // namespace duckdb

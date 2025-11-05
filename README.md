@@ -7,6 +7,7 @@ This is a DuckDB extension for connecting to and "attach":ing Teradata databases
 ## Table of Contents
 <!-- TOC -->
 * [Usage](#usage)
+  * [Loading the extension](#loading-the-extension) 
   * [Attaching to Teradata](#attaching-to-teradata)
     * [Using Secrets](#using-secrets)
     * [Parameter Precedence](#parameter-precedence)
@@ -22,6 +23,25 @@ This is a DuckDB extension for connecting to and "attach":ing Teradata databases
 
 This extension currently requires the [Teradata Tools and Utilities](https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Introduction/Vantage-and-Tools/Teradata-Tools-and-Utilities) dynamic libraries to be installed on your machine. You can download them at the following links for [Windows](https://downloads.teradata.com/download/database/teradata-tools-and-utilities-13-10), [macOS](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-mac-osx-installation-package), and [Linux](https://downloads.teradata.com/download/tools/teradata-tools-and-utilities-linux-installation-package-0). In the future we hope to distribute this extension with the required libraries statically linked to remove this requirement.
 
+## Loading the extension
+
+To use the DuckDB Teradata extension, you first need to install and load it.
+DuckDB labs does not currently distribute the extension through the standard extension repository, so you will need to build it from source yourself. See the [Building the Extension](#building-the-extension) section below for instructions on how to build the extension.
+
+Once you have built the extension, you first need to install it by copying the resulting shared library file
+(`teradata.duckdb_extension`) to a location where DuckDB can find it, i.e. the `extensions` directory in your DuckDB home directory.
+
+This can also be done through the `INSTALL` command in the DuckDB CLI, e.g.:
+
+```sql
+INSTALL 'path/to/teradata.duckdb_extension';
+```
+
+After the extension is installed, you can load it in your DuckDB session using the `LOAD` command:
+
+```sql
+LOAD teradata;
+```
 
 ## Attaching to Teradata
 

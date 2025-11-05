@@ -15,9 +15,10 @@ namespace duckdb {
 // Delete Operator
 //----------------------------------------------------------------------------------------------------------------------
 
-TeradataDeleteUpdate::TeradataDeleteUpdate(LogicalOperator &op, TableCatalogEntry &table, string name, string query)
-	 : PhysicalOperator(PhysicalOperatorType::EXTENSION, op.types, 1), table(table),
-	name(std::move(name)), query(std::move(query)) {
+TeradataDeleteUpdate::TeradataDeleteUpdate(PhysicalPlan &plan, LogicalOperator &op, TableCatalogEntry &table,
+                                           string name, string query)
+    : PhysicalOperator(plan, PhysicalOperatorType::EXTENSION, op.types, 1), table(table), name(std::move(name)),
+      query(std::move(query)) {
 }
 
 class TeradataDeleteUpdateGlobalState final : public GlobalSinkState {
@@ -35,7 +36,7 @@ SinkResultType TeradataDeleteUpdate::Sink(ExecutionContext &context, DataChunk &
 }
 
 SinkFinalizeType TeradataDeleteUpdate::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
-											 OperatorSinkFinalizeInput &input) const {
+                                                OperatorSinkFinalizeInput &input) const {
 	auto &gstate = input.global_state.Cast<TeradataDeleteUpdateGlobalState>();
 	auto &transaction = TeradataTransaction::Get(context, table.catalog);
 	auto &connection = transaction.GetConnection();
@@ -45,12 +46,12 @@ SinkFinalizeType TeradataDeleteUpdate::Finalize(Pipeline &pipeline, Event &event
 	// So for now, always return 0 affected rows.
 	connection.Execute(query);
 
-	gstate.affected_rows = 0; //result->AffectedRows();
+	gstate.affected_rows = 0; // result->AffectedRows();
 	return SinkFinalizeType::READY;
 }
 
 SourceResultType TeradataDeleteUpdate::GetData(ExecutionContext &context, DataChunk &chunk,
-											OperatorSourceInput &input) const {
+                                               OperatorSourceInput &input) const {
 	auto &insert_gstate = sink_state->Cast<TeradataDeleteUpdateGlobalState>();
 	chunk.SetCardinality(1);
 	chunk.SetValue(0, 0, Value::BIGINT(insert_gstate.affected_rows));
@@ -75,65 +76,64 @@ InsertionOrderPreservingMap<string> TeradataDeleteUpdate::ParamsToString() const
 // Attempt to reconstruct the WHERE clause from the physical operator tree
 static string ExtractFilters(PhysicalOperator &child, const string &statement) {
 	switch (child.type) {
-		case PhysicalOperatorType::FILTER: {
-			const auto &filter = child.Cast<PhysicalFilter>();
-			const auto result = ExtractFilters(child.children[0], statement);
-			auto filter_str = filter.expression->ToString();
+	case PhysicalOperatorType::FILTER: {
+		const auto &filter = child.Cast<PhysicalFilter>();
+		const auto result = ExtractFilters(child.children[0], statement);
+		auto filter_str = filter.expression->ToString();
+		if (result.empty()) {
+			return filter_str;
+		}
+		return result + " AND " + filter_str;
+	}
+	case PhysicalOperatorType::PROJECTION: {
+		const auto &proj = child.Cast<PhysicalProjection>();
+		for (auto &expr : proj.select_list) {
+			switch (expr->type) {
+			case ExpressionType::BOUND_REF:
+			case ExpressionType::BOUND_COLUMN_REF:
+			case ExpressionType::VALUE_CONSTANT:
+				break;
+			default:
+				throw NotImplementedException("Unsupported expression type in projection - only simple deletes/updates "
+				                              "are supported in the Teradata connector");
+			}
+		}
+		return ExtractFilters(child.children[0], statement);
+	}
+	case PhysicalOperatorType::TABLE_SCAN: {
+		const auto &table_scan = child.Cast<PhysicalTableScan>();
+		if (!table_scan.table_filters) {
+			return string();
+		}
+		string result;
+		for (auto &entry : table_scan.table_filters->filters) {
+			const auto column_index = entry.first;
+			const auto &filter = entry.second;
+			string column_name;
+			if (column_index < table_scan.names.size()) {
+				const auto col_id = table_scan.column_ids[column_index].GetPrimaryIndex();
+				if (col_id == COLUMN_IDENTIFIER_ROW_ID) {
+					throw NotImplementedException("RowID column not supported in Teradata DELETE statements - "
+					                              "use a primary key or unique index instead");
+				}
+				column_name = table_scan.names[col_id];
+			}
+			BoundReferenceExpression bound_ref(std::move(column_name), LogicalTypeId::INVALID, 0);
+			const auto filter_expr = filter->ToExpression(bound_ref);
+			auto filter_str = filter_expr->ToString();
 			if (result.empty()) {
-				return filter_str;
+				result = std::move(filter_str);
+			} else {
+				result += " AND " + filter_str;
 			}
-			return result + " AND " + filter_str;
 		}
-		case PhysicalOperatorType::PROJECTION: {
-			const auto &proj = child.Cast<PhysicalProjection>();
-			for (auto &expr : proj.select_list) {
-				switch (expr->type) {
-				case ExpressionType::BOUND_REF:
-				case ExpressionType::BOUND_COLUMN_REF:
-				case ExpressionType::VALUE_CONSTANT:
-					break;
-				default:
-					throw NotImplementedException("Unsupported expression type in projection - only simple deletes/updates "
-												  "are supported in the Teradata connector");
-				}
-			}
-			return ExtractFilters(child.children[0], statement);
-		}
-		case PhysicalOperatorType::TABLE_SCAN: {
-			const auto &table_scan = child.Cast<PhysicalTableScan>();
-			if (!table_scan.table_filters) {
-				return string();
-			}
-			string result;
-			for (auto &entry : table_scan.table_filters->filters) {
-				const auto column_index = entry.first;
-				const auto &filter = entry.second;
-				string column_name;
-				if (column_index < table_scan.names.size()) {
-					const auto col_id = table_scan.column_ids[column_index].GetPrimaryIndex();
-					if (col_id == COLUMN_IDENTIFIER_ROW_ID) {
-						throw NotImplementedException("RowID column not supported in Teradata DELETE statements - "
-													  "use a primary key or unique index instead");
-
-					}
-					column_name = table_scan.names[col_id];
-				}
-				BoundReferenceExpression bound_ref(std::move(column_name), LogicalTypeId::INVALID, 0);
-				const auto filter_expr = filter->ToExpression(bound_ref);
-				auto filter_str = filter_expr->ToString();
-				if (result.empty()) {
-					result = std::move(filter_str);
-				} else {
-					result += " AND " + filter_str;
-				}
-			}
-			return result;
-		}
-		default:
-			throw NotImplementedException("Unsupported operator type %s in %s statement - only simple deletes "
-			                              "(e.g. %s "
-			                              "FROM tbl WHERE x=y) are supported in the Teradata connector",
-			                              PhysicalOperatorToString(child.type), statement, statement);
+		return result;
+	}
+	default:
+		throw NotImplementedException("Unsupported operator type %s in %s statement - only simple deletes "
+		                              "(e.g. %s "
+		                              "FROM tbl WHERE x=y) are supported in the Teradata connector",
+		                              PhysicalOperatorToString(child.type), statement, statement);
 	}
 }
 
@@ -160,7 +160,8 @@ PhysicalOperator &TeradataCatalog::PlanDelete(ClientContext &context, PhysicalPl
 		throw BinderException("RETURNING clause not yet supported for deletion of a Teradata table");
 	}
 
-	auto &execute = planner.Make<TeradataDeleteUpdate>(op, op.table, "TERADATA_DELETE", ConstructDeleteStatement(op, plan));
+	auto &execute =
+	    planner.Make<TeradataDeleteUpdate>(op, op.table, "TERADATA_DELETE", ConstructDeleteStatement(op, plan));
 	execute.children.push_back(plan);
 	return execute;
 }
@@ -179,7 +180,7 @@ static string ConstructUpdateStatement(LogicalUpdate &op, PhysicalOperator &chil
 	result += " SET ";
 	if (child.type != PhysicalOperatorType::PROJECTION) {
 		throw NotImplementedException("Teradata Update not supported - Expected the "
-									  "child of an update to be a projection");
+		                              "child of an update to be a projection");
 	}
 	auto &proj = child.Cast<PhysicalProjection>();
 	for (idx_t c = 0; c < op.columns.size(); c++) {
@@ -208,17 +209,15 @@ static string ConstructUpdateStatement(LogicalUpdate &op, PhysicalOperator &chil
 }
 
 PhysicalOperator &TeradataCatalog::PlanUpdate(ClientContext &context, PhysicalPlanGenerator &planner, LogicalUpdate &op,
-										   PhysicalOperator &plan) {
+                                              PhysicalOperator &plan) {
 	if (op.return_chunk) {
 		throw BinderException("RETURNING clause not yet supported for updates of a Teradata table");
 	}
 
-	auto &execute = planner.Make<TeradataDeleteUpdate>(op, op.table, "TERADATA_UPDATE", ConstructUpdateStatement(op, plan));
+	auto &execute =
+	    planner.Make<TeradataDeleteUpdate>(op, op.table, "TERADATA_UPDATE", ConstructUpdateStatement(op, plan));
 	execute.children.push_back(plan);
 	return execute;
 }
-
-
-
 
 } // namespace duckdb

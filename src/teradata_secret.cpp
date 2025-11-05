@@ -1,13 +1,13 @@
 #include "duckdb.hpp"
 #include "duckdb/main/secret/secret.hpp"
 #include "duckdb/main/secret/secret_manager.hpp"
-#include "duckdb/main/extension_util.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 
 #include "teradata_secret.hpp"
 
 namespace duckdb {
 
-const char* TeradataSecret::TYPE = "teradata";
+const char *TeradataSecret::TYPE = "teradata";
 
 static unique_ptr<BaseSecret> CreateTeradataSecretFunction(ClientContext &context, CreateSecretInput &input) {
 	vector<string> prefix_paths;
@@ -68,7 +68,7 @@ bool TeradataSecret::TryGet(ClientContext &context, const string &name, Teradata
 	return true;
 }
 
-void TeradataSecret::Register(DatabaseInstance &db) {
+void TeradataSecret::Register(ExtensionLoader &loader) {
 
 	// Register the teradata secret type
 	SecretType secret_type;
@@ -76,7 +76,7 @@ void TeradataSecret::Register(DatabaseInstance &db) {
 	secret_type.deserializer = KeyValueSecret::Deserialize<KeyValueSecret>;
 	secret_type.default_provider = "config";
 
-	ExtensionUtil::RegisterSecretType(db, secret_type);
+	loader.RegisterSecretType(secret_type);
 
 	// Register the teradata secret creation function
 	CreateSecretFunction secret_constructor;
@@ -88,7 +88,7 @@ void TeradataSecret::Register(DatabaseInstance &db) {
 	secret_constructor.named_parameters["user"] = LogicalType::VARCHAR;
 	secret_constructor.named_parameters["database"] = LogicalType::VARCHAR;
 
-	ExtensionUtil::RegisterFunction(db, secret_constructor);
+	loader.RegisterFunction(secret_constructor);
 }
 
 } // namespace duckdb

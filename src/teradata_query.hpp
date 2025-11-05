@@ -5,6 +5,7 @@
 namespace duckdb {
 
 class DatabaseInstance;
+class ExtensionLoader;
 class TeradataTableEntry;
 
 class TeradataBindData final : public TableFunctionData {
@@ -40,7 +41,7 @@ private:
 
 struct TeradataQueryFunction {
 	static TableFunction GetFunction();
-	static void Register(DatabaseInstance &db);
+	static void Register(ExtensionLoader &loader);
 };
 
 } // namespace duckdb

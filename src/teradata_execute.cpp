@@ -3,7 +3,7 @@
 #include "teradata_transaction.hpp"
 
 #include "duckdb/function/function.hpp"
-#include "duckdb/main/extension_util.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 
 namespace duckdb {
 
@@ -58,9 +58,9 @@ static void Execute(ClientContext &context, TableFunctionInput &data_p, DataChun
 // Register
 //----------------------------------------------------------------------------------------------------------------------
 
-void TeradataExecuteFunction::Register(DatabaseInstance &db) {
+void TeradataExecuteFunction::Register(ExtensionLoader &loader) {
 	TableFunction func("teradata_execute", {LogicalType::VARCHAR, LogicalType::VARCHAR}, Execute, Bind);
-	ExtensionUtil::RegisterFunction(db, func);
+	loader.RegisterFunction(func);
 }
 
 } // namespace duckdb
