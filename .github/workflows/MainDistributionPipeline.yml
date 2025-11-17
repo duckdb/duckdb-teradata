@@ -26,7 +26,7 @@ jobs:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
     with:
-      duckdb_version: v1.4.1
+      duckdb_version: v1.4.2
       extension_name: teradata
       ci_tools_version: main
       vcpkg_commit: ce613c41372b23b1f51333815feb3edd87ef8a8b
@@ -39,7 +39,7 @@ jobs:
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_deploy.yml@main
     secrets: inherit
     with:
-      duckdb_version: v1.4.1
+      duckdb_version: v1.4.2
       ci_tools_version: main
       extension_name: teradata
       deploy_latest: ${{ startsWith(github.ref, 'refs/heads/v') || github.ref == 'refs/heads/main' }}
