@@ -270,6 +270,18 @@ Once you have the dependencies installed, simply running `make debug` or `make r
 
 # Running tests
 
+## Unit tests
+
+The C++ unit tests in `test/cpp/` need no Teradata instance: they run DuckDB in-process against a scripted fake of the Teradata CLIv2 library, covering type mapping, filter pushdown, the generated SQL, catalog loading, inserts and query cancellation.
+
+```bash
+make unittest
+```
+
+This builds the extension with `-DTERADATA_UNITTESTS=1` and runs `./build/release/extension/teradata/teradata_unittest`, which also accepts Catch2 options, e.g. a tag such as `[filter]`.
+
+## SQL tests
+
 DuckDB provides a built-in test framework that can be used to run tests for the extension. However, the tests require a running Teradata instance to be available. Credentials to the Teradata instance needs to be provided through environment variables, that is: 
 - `TD_LOGON`: the logon string to the Teradata instance, e.g. `127.0.0.1/dbc,dbc`
 - `TD_DB`: the name of the Teradata database to use for testing, e.g. `my_db`.

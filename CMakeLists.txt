@@ -74,3 +74,30 @@ install(
   EXPORT "${DUCKDB_EXPORT_SET}"
   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
   ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+
+# C++ unit tests, run with an in-process fake of the Teradata CLIv2 library (no Teradata system needed).
+# Enable with -DTERADATA_UNITTESTS=1, e.g. `make unittest`.
+option(TERADATA_UNITTESTS "Build the Teradata extension C++ unit tests" OFF)
+if(TERADATA_UNITTESTS)
+  add_executable(
+    teradata_unittest
+    test/cpp/test_main.cpp
+    test/cpp/fake_cliv2.cpp
+    test/cpp/test_types.cpp
+    test/cpp/test_column_io.cpp
+    test/cpp/test_filter.cpp
+    test/cpp/test_sql.cpp
+    test/cpp/test_integration.cpp)
+  target_include_directories(
+    teradata_unittest PRIVATE src ${TD_INCLUDE_DIR} test/cpp
+                              ${CMAKE_SOURCE_DIR}/third_party/catch)
+  target_link_libraries(teradata_unittest ${EXTENSION_NAME} duckdb_static)
+  link_extension_libraries(teradata_unittest "")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
+                                               "AppleClang")
+    target_compile_options(teradata_unittest PRIVATE -Wno-deprecated-register
+                                                     -Wno-register)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(teradata_unittest PRIVATE -Wno-register)
+  endif()
+endif()

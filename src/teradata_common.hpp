@@ -38,8 +38,13 @@ extern char OSERRVersion[];
 namespace duckdb {
 
 struct TeradataCLIV2 {
+	typedef Int32 (*callback_t)(Int32 *, char *, struct DBCAREA *);
+
 	static void Load(ClientContext &context);
 	static bool IsLoaded();
+
+	//! Route CLIv2 calls to the given functions instead of the Teradata library (for tests)
+	static void SetImplementation(callback_t dbchini, callback_t dbchcl);
 };
 
 } // namespace duckdb

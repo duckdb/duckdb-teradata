@@ -65,8 +65,13 @@ jobs:
         env:
           GEN: ninja
           STATIC_LIBCPP: 1
+          EXT_FLAGS: -DTERADATA_UNITTESTS=1
         run: |
           make release
+
+      - name: C++ unit tests (no Teradata system needed)
+        run: |
+          ./build/release/extension/teradata/teradata_unittest
 
       - name: Test extension
         env:

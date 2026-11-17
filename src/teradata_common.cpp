@@ -5,7 +5,7 @@
 
 namespace duckdb {
 
-typedef Int32 (*td_callback)(Int32 *, char *, struct DBCAREA *);
+typedef TeradataCLIV2::callback_t td_callback;
 static td_callback DBCHINI_IMPL = nullptr;
 static td_callback DBCHCL_IMPL = nullptr;
 
@@ -75,6 +75,12 @@ static void *TryLoadCLIV2() {
 	}
 
 	throw IOException("Failed to load Teradata CLIV2: %s", StringUtil::Join(errors, "\n"));
+}
+
+void TeradataCLIV2::SetImplementation(callback_t dbchini, callback_t dbchcl) {
+	lock_guard<mutex> lock(load_mutex);
+	DBCHINI_IMPL = dbchini;
+	DBCHCL_IMPL = dbchcl;
 }
 
 bool TeradataCLIV2::IsLoaded() {
