@@ -6,9 +6,6 @@ set(TARGET_NAME teradata)
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
-# Set c++ standard to c++11
-set(CMAKE_CXX_STANDARD 11)
-
 project(${TARGET_NAME})
 
 include_directories(src)

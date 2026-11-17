@@ -50,8 +50,8 @@ SinkFinalizeType TeradataDeleteUpdate::Finalize(Pipeline &pipeline, Event &event
 	return SinkFinalizeType::READY;
 }
 
-SourceResultType TeradataDeleteUpdate::GetData(ExecutionContext &context, DataChunk &chunk,
-                                               OperatorSourceInput &input) const {
+SourceResultType TeradataDeleteUpdate::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
+                                                       OperatorSourceInput &input) const {
 	auto &insert_gstate = sink_state->Cast<TeradataDeleteUpdateGlobalState>();
 	chunk.SetCardinality(1);
 	chunk.SetValue(0, 0, Value::BIGINT(insert_gstate.affected_rows));

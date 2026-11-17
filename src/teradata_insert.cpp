@@ -180,8 +180,8 @@ SinkFinalizeType TeradataInsert::Finalize(Pipeline &pipeline, Event &event, Clie
 // GetData
 //----------------------------------------------------------------------------------------------------------------------
 
-SourceResultType TeradataInsert::GetData(ExecutionContext &context, DataChunk &chunk,
-                                         OperatorSourceInput &input) const {
+SourceResultType TeradataInsert::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
+                                                 OperatorSourceInput &input) const {
 
 	const auto &state = sink_state->Cast<TeradataInsertGlobalState>();
 	chunk.SetCardinality(1);

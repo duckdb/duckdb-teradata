@@ -1,6 +1,7 @@
 #include "teradata_common.hpp"
 
 #include "duckdb/common/dl.hpp"
+#include "duckdb/main/settings.hpp"
 
 namespace duckdb {
 
@@ -85,7 +86,7 @@ void TeradataCLIV2::Load(ClientContext &context) {
 	lock_guard<mutex> lock(load_mutex);
 
 	// Check if external access is allowed
-	if (!context.db->config.options.enable_external_access) {
+	if (!Settings::Get<EnableExternalAccessSetting>(context)) {
 		throw PermissionException(
 		    "Loading the Teradata CLIV2 library is not possible as external access is disabled through configuration");
 	}

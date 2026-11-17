@@ -19,8 +19,8 @@ PhysicalTeradataCreateIndex::PhysicalTeradataCreateIndex(PhysicalPlan &plan, uni
       table(table) {
 }
 
-SourceResultType PhysicalTeradataCreateIndex::GetData(ExecutionContext &context, DataChunk &chunk,
-                                                      OperatorSourceInput &input) const {
+SourceResultType PhysicalTeradataCreateIndex::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
+                                                              OperatorSourceInput &input) const {
 	auto &catalog = table.catalog;
 	auto &schema = table.schema;
 	auto transaction = catalog.GetCatalogTransaction(context.client);
