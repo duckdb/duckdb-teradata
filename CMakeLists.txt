@@ -14,6 +14,7 @@ set(EXTENSION_SOURCES
     src/teradata_extension.cpp
     src/teradata_secret.cpp
     src/teradata_storage.cpp
+    src/teradata_logon.cpp
     src/teradata_catalog.cpp
     src/teradata_connection.cpp
     src/teradata_transaction_manager.cpp
@@ -35,7 +36,6 @@ set(EXTENSION_SOURCES
     src/teradata_filter.cpp
     src/teradata_column_reader.cpp
     src/teradata_column_writer.cpp
-    src/teradata_secret.cpp
     src/teradata_delete_update.cpp)
 
 # Teradata on macos if(APPLE) set(TD_INCLUDE_DIR "/Library/Application\

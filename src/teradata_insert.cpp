@@ -12,8 +12,11 @@
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 #include "duckdb/execution/physical_plan_generator.hpp"
 
-#include <teradata_column_writer.hpp>
-#include <duckdb/planner/operator/logical_create_table.hpp>
+#include "teradata_column_writer.hpp"
+#include "duckdb/planner/operator/logical_create_table.hpp"
+
+#include <algorithm>
+#include <iterator>
 
 namespace duckdb {
 
@@ -52,71 +55,56 @@ public:
 	}
 };
 
-static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntry &entry) {
-
-	// First, figure out what columns we are inserting
-	auto &columns = entry.GetColumns();
-	idx_t column_count = columns.LogicalColumnCount();
-	vector<PhysicalIndex> column_indices;
-
-	if (insert.column_index_map.empty()) {
-		for (idx_t i = 0; i < column_count; i++) {
-			column_indices.emplace_back(i);
+vector<PhysicalIndex> GetInsertColumnOrder(const physical_index_vector_t<idx_t> &column_index_map,
+                                           idx_t table_column_count) {
+	vector<PhysicalIndex> result;
+	if (column_index_map.empty()) {
+		// All columns, in table order
+		for (idx_t i = 0; i < table_column_count; i++) {
+			result.emplace_back(i);
 		}
-	} else {
-		column_indices.resize(column_count, PhysicalIndex(DConstants::INVALID_INDEX));
-		column_count = 0;
-		for (idx_t entry_idx = 0; entry_idx < insert.column_index_map.size(); entry_idx++) {
-			const auto col_idx = PhysicalIndex(entry_idx);
-			const auto mapped_idx = insert.column_index_map[col_idx];
-			if (mapped_idx == DConstants::INVALID_INDEX) {
-				// Column not specified
-				continue;
-			}
-			column_indices[mapped_idx] = col_idx;
-			column_count++;
+		return result;
+	}
+	// column_index_map maps each table column to its position in the input, or INVALID_INDEX if not inserted
+	vector<pair<idx_t, PhysicalIndex>> positioned;
+	for (idx_t col_idx = 0; col_idx < column_index_map.size(); col_idx++) {
+		const auto input_idx = column_index_map[PhysicalIndex(col_idx)];
+		if (input_idx != DConstants::INVALID_INDEX) {
+			positioned.emplace_back(input_idx, PhysicalIndex(col_idx));
 		}
 	}
-
-	// Now construct the SQL string.
-	// We first construct the USING descriptor with the column names and types so that we can pass parameters.
-	// Then we construct the INSERT INTO statement and the VALUES clause with the parameter names.
-
-	string result = "USING ";
-	result += "(";
-	for (idx_t i = 0; i < column_count; i++) {
-		if (i > 0) {
-			result += ", ";
-		}
-
-		auto &col = columns.GetColumn(column_indices[i]);
-		result += KeywordHelper::WriteQuoted(col.GetName().GetIdentifierName(), '"');
-		result += " ";
-
-		// Convert to teradata type first
-		const auto td_type = TeradataType::FromDuckDB(col.GetType());
-		result += td_type.ToString();
-	}
-	result += ") ";
-
-	result += "INSERT INTO ";
-
-	if (!entry.schema.name.empty()) {
-		result += KeywordHelper::WriteQuoted(entry.schema.name.GetIdentifierName(), '"') + ".";
-	}
-	result += KeywordHelper::WriteQuoted(entry.name.GetIdentifierName(), '"');
-
-	result += " VALUES (";
-
-	for (idx_t i = 0; i < column_count; i++) {
-		if (i > 0) {
-			result += ", ";
-		}
-		auto &col = columns.GetColumn(column_indices[i]);
-		result += ":" + KeywordHelper::WriteQuoted(col.GetName().GetIdentifierName(), '"');
-	}
-	result += ");";
+	std::sort(
+	    positioned.begin(), positioned.end(),
+	    [](const pair<idx_t, PhysicalIndex> &a, const pair<idx_t, PhysicalIndex> &b) { return a.first < b.first; });
+	std::transform(positioned.begin(), positioned.end(), std::back_inserter(result),
+	               [](const pair<idx_t, PhysicalIndex> &entry) { return entry.second; });
 	return result;
+}
+
+string BuildInsertSQL(const string &schema_name, const string &table_name, const vector<InsertColumn> &columns) {
+	vector<string> params;
+	vector<string> values;
+	for (auto &column : columns) {
+		const auto quoted = KeywordHelper::WriteQuoted(column.name, '"');
+		params.push_back(quoted + " " + TeradataType::FromDuckDB(column.type).ToString());
+		values.push_back(":" + quoted);
+	}
+	const auto table = (schema_name.empty() ? "" : KeywordHelper::WriteQuoted(schema_name, '"') + ".") +
+	                   KeywordHelper::WriteQuoted(table_name, '"');
+
+	// The USING descriptor declares the parameters (names and types) that the VALUES clause refers to
+	return "USING (" + StringUtil::Join(params, ", ") + ") INSERT INTO " + table + " VALUES (" +
+	       StringUtil::Join(values, ", ") + ");";
+}
+
+static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntry &entry) {
+	auto &table_columns = entry.GetColumns();
+	vector<InsertColumn> columns;
+	for (auto &index : GetInsertColumnOrder(insert.column_index_map, table_columns.LogicalColumnCount())) {
+		auto &column = table_columns.GetColumn(index);
+		columns.push_back({column.GetName().GetIdentifierName(), column.GetType()});
+	}
+	return BuildInsertSQL(entry.schema.name.GetIdentifierName(), entry.name.GetIdentifierName(), columns);
 }
 
 unique_ptr<GlobalSinkState> TeradataInsert::GetGlobalSinkState(ClientContext &context) const {

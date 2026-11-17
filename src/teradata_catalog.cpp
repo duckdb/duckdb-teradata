@@ -6,13 +6,17 @@
 #include "teradata_schema_entry.hpp"
 #include "teradata_table_entry.hpp"
 
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/database_manager.hpp"
+
 namespace duckdb {
 
 //----------------------------------------------------------------------------------------------------------------------
 // Initialization
 //----------------------------------------------------------------------------------------------------------------------
 
-TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &database_to_load, idx_t buffer_size)
+TeradataCatalog::TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &database_to_load,
+                                 idx_t buffer_size)
     : Catalog(db), schemas(*this, database_to_load), default_schema(database_to_load), buffer_size(buffer_size) {
 	conn = make_uniq<TeradataConnection>(logon_string, buffer_size);
 	path = logon_string;
@@ -87,6 +91,19 @@ string TeradataCatalog::GetCatalogType() {
 
 string TeradataCatalog::GetDBPath() {
 	return path;
+}
+
+TeradataCatalog &TeradataCatalog::GetAttached(ClientContext &context, const string &db_name,
+                                              const string &function_name) {
+	auto db = DatabaseManager::Get(context).GetDatabase(context, Identifier(db_name));
+	if (!db) {
+		throw BinderException("Failed to find attached database \"%s\" referenced in %s", db_name, function_name);
+	}
+	auto &catalog = db->GetCatalog();
+	if (catalog.GetCatalogType() != "teradata") {
+		throw BinderException("Attached database \"%s\" does not refer to a Teradata database", db_name);
+	}
+	return catalog.Cast<TeradataCatalog>();
 }
 
 } // namespace duckdb

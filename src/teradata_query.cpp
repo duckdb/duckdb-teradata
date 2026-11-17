@@ -9,9 +9,75 @@
 
 #include "duckdb/main/extension/extension_loader.hpp"
 
-#include <teradata_filter.hpp>
+#include "teradata_filter.hpp"
+
+#include <algorithm>
 
 namespace duckdb {
+
+//----------------------------------------------------------------------------------------------------------------------
+// SQL helpers
+//----------------------------------------------------------------------------------------------------------------------
+string StripTrailingSemicolons(string sql) {
+	const auto end = sql.find_last_not_of(" \t\n\r\f\v;");
+	return end == string::npos ? string() : sql.substr(0, end + 1);
+}
+
+string BuildScanSQL(const string &sql, const string &schema_name, const string &table_name,
+                    const string &where_clause) {
+	if (sql.empty() && table_name.empty()) {
+		throw InvalidInputException("Teradata query requires a valid SQL string");
+	}
+	const auto select = sql.empty() ? StringUtil::Format("SELECT * FROM %s.%s", schema_name, table_name) : sql;
+	return where_clause.empty() ? select : select + " WHERE " + where_clause;
+}
+
+namespace {
+
+//! A temporal type that Teradata transmits as CHAR(char_length)
+struct CharTransmission {
+	static constexpr int64_t ANY_WIDTH = -1;
+
+	TeradataTypeId id;
+	int64_t width;
+	int64_t char_length;
+};
+
+const CharTransmission CHAR_TRANSMISSIONS[] = {
+    {TeradataTypeId::TIMESTAMP, 0, 19},
+    {TeradataTypeId::TIMESTAMP, 3, 23},
+    {TeradataTypeId::TIMESTAMP, 6, 26},
+    {TeradataTypeId::TIMESTAMP_TZ, CharTransmission::ANY_WIDTH, 32},
+    {TeradataTypeId::TIME, CharTransmission::ANY_WIDTH, 15},
+    {TeradataTypeId::TIME_TZ, CharTransmission::ANY_WIDTH, 21},
+};
+
+} // namespace
+
+bool IsTransmittedAs(const TeradataType &expected, const TeradataType &actual) {
+	if (expected == actual) {
+		return true;
+	}
+	if (actual.GetId() != TeradataTypeId::CHAR) {
+		return false;
+	}
+	return std::any_of(std::begin(CHAR_TRANSMISSIONS), std::end(CHAR_TRANSMISSIONS), [&](const CharTransmission &t) {
+		return t.id == expected.GetId() && (t.width == CharTransmission::ANY_WIDTH || t.width == expected.GetWidth()) &&
+		       t.char_length == actual.GetLength();
+	});
+}
+
+void CheckBoundTypes(const vector<string> &names, const vector<TeradataType> &expected,
+                     const vector<TeradataType> &actual) {
+	for (idx_t i = 0; i < actual.size(); i++) {
+		if (!IsTransmittedAs(expected[i], actual[i])) {
+			throw InvalidInputException("Teradata query schema has changed since it was last bound!\n"
+			                            "Column: '%s' expected to be of type '%s' but received '%s'\n"
+			                            "Please re-execute or re-prepare the query",
+			                            names[i], expected[i].ToString(), actual[i].ToString());
+		}
+	}
+}
 
 //----------------------------------------------------------------------------------------------------------------------
 // Bind
@@ -23,30 +89,9 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 		throw BinderException("Parameters to teradata_query cannot be NULL");
 	}
 
-	const auto db_name = input.inputs[0].GetValue<string>();
-
-	// Look up the database to query
-	auto &db_manager = DatabaseManager::Get(context);
-	auto db = db_manager.GetDatabase(context, Identifier(db_name));
-	if (!db) {
-		throw BinderException("Failed to find attached database \"%s\" referenced in teradata_query", db_name);
-	}
-
-	auto &catalog = db->GetCatalog();
-	if (catalog.GetCatalogType() != "teradata") {
-		throw BinderException("Attached database \"%s\" does not refer to a Teradata database", db_name);
-	}
-
-	auto &td_catalog = catalog.Cast<TeradataCatalog>();
-	auto &transaction = TeradataTransaction::Get(context, catalog);
-
-	// Strip any trailing semicolons
-	auto sql = input.inputs[1].GetValue<string>();
-	StringUtil::RTrim(sql);
-	while (!sql.empty() && sql.back() == ';') {
-		sql = sql.substr(0, sql.size() - 1);
-		StringUtil::RTrim(sql);
-	}
+	auto &td_catalog = TeradataCatalog::GetAttached(context, input.inputs[0].GetValue<string>(), "teradata_query");
+	auto &transaction = TeradataTransaction::Get(context, td_catalog);
+	const auto sql = StripTrailingSemicolons(input.inputs[1].GetValue<string>());
 
 	auto &con = transaction.GetConnection();
 
@@ -104,25 +149,10 @@ struct TeradataQueryState final : GlobalTableFunctionState {
 
 static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &context, TableFunctionInitInput &input) {
 	auto &data = input.bind_data->Cast<TeradataBindData>();
-	string sql = data.sql;
 
-	// If we dont have a SQL string, just copy from the table
-	if (sql.empty()) {
-		if (data.table_name.empty()) {
-			throw InvalidInputException("Teradata query requires a valid SQL string");
-		}
-
-		// If we get here, we have a table name, so we need to construct a SQL string
-		sql = StringUtil::Format("SELECT * FROM %s.%s", data.schema_name, data.table_name);
-	}
-
-	// Also add simple filters if we got them
-	if (input.filters) {
-		const auto where_clause = TeradataFilter::Transform(input.column_ids, *input.filters, data.names);
-		if (!where_clause.empty()) {
-			sql += " WHERE " + where_clause;
-		}
-	}
+	const auto where_clause =
+	    input.filters ? TeradataFilter::Transform(input.column_ids, *input.filters, data.names) : string();
+	const auto sql = BuildScanSQL(data.sql, data.schema_name, data.table_name, where_clause);
 
 	auto result = make_uniq<TeradataQueryState>();
 	result->column_ids = input.column_ids;
@@ -131,50 +161,7 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 	result->td_query = con.Query(sql, data.is_materialized, context);
 
 	// Check that the types are still the same, in case we need to rebind
-	auto &td_types = result->td_query->GetTypes();
-
-	for (idx_t i = 0; i < td_types.size(); i++) {
-		// Compare the types of the query with the types we got during binding
-		auto &expected = data.td_types[i];
-		auto &actual = td_types[i];
-
-		if (actual != expected) {
-			if (expected.GetId() == TeradataTypeId::TIMESTAMP && actual.GetId() == TeradataTypeId::CHAR) {
-
-				const auto is_ts_s = expected.GetWidth() == 6 && actual.GetLength() == 26;
-				const auto is_ts_ms = expected.GetWidth() == 3 && actual.GetLength() == 23;
-				const auto is_ts_us = expected.GetWidth() == 0 && actual.GetLength() == 19;
-
-				if (is_ts_s || is_ts_ms || is_ts_us) {
-					// Special case, this gets cast later
-					continue;
-				}
-			}
-
-			if (expected.GetId() == TeradataTypeId::TIMESTAMP_TZ && actual.GetId() == TeradataTypeId::CHAR &&
-			    actual.GetLength() == 32) {
-				// Special case, this gets cast later
-				continue;
-			}
-
-			if (expected.GetId() == TeradataTypeId::TIME && actual.GetId() == TeradataTypeId::CHAR &&
-			    actual.GetLength() == 15) {
-				// Special case, this gets cast later
-				continue;
-			}
-
-			if (expected.GetId() == TeradataTypeId::TIME_TZ && actual.GetId() == TeradataTypeId::CHAR &&
-			    actual.GetLength() == 21) {
-				// Special case, this gets cast later
-				continue;
-			}
-
-			throw InvalidInputException("Teradata query schema has changed since it was last bound!\n"
-			                            "Column: '%s' expected to be of type '%s' but received '%s'\n"
-			                            "Please re-execute or re-prepare the query",
-			                            data.names[i], expected.ToString(), actual.ToString());
-		}
-	}
+	CheckBoundTypes(data.names, data.td_types, result->td_query->GetTypes());
 
 	// Initialize the scan chunk
 	result->td_query->InitScanChunk(result->scan_chunk);

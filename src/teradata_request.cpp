@@ -141,196 +141,6 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	EndRequest();
 }
 
-enum class TeradataColumnTypeVariant { STANDARD, NULLABLE, PARAM_IN, PARAM_INOUT, PARAM_OUT };
-
-struct TeradataColumnType {
-	TeradataType type;
-	TeradataColumnTypeVariant variant;
-};
-
-static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
-	// Nullable is 1 + the standard type
-	// Param in is 500 + the standard type
-	// Param inout is 501 + the standard type
-	// Param out is 502 + the standard type
-	switch (type) {
-	case 400:
-		return {TeradataTypeId::BLOB, TeradataColumnTypeVariant::STANDARD};
-	case 448:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD};
-	case 449:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::NULLABLE};
-	case 948:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_IN};
-	case 949:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 950:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 452:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::STANDARD};
-	case 453:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::NULLABLE};
-	case 952:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_IN};
-	case 953:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 954:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// LONGVARCHAR
-	case 456:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD};
-	case 457:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::NULLABLE};
-	case 956:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_IN};
-	case 957:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 958:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// DECIMAL
-	case 484:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::STANDARD};
-	case 485:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::NULLABLE};
-	case 984:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_IN};
-	case 985:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 986:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 472:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::STANDARD};
-	case 473:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::NULLABLE};
-	case 972:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_IN};
-	case 973:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 974:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 480:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::STANDARD};
-	case 481:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::NULLABLE};
-	case 980:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_IN};
-	case 981:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 982:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 496:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::STANDARD};
-	case 497:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::NULLABLE};
-	case 996:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_IN};
-	case 997:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 998:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 500:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::STANDARD};
-	case 501:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::NULLABLE};
-	case 1000:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_IN};
-	case 1001:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1002:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 600:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::STANDARD};
-	case 601:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::NULLABLE};
-	case 1100:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_IN};
-	case 1101:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1102:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 688:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD};
-	case 689:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE};
-	case 1188:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1189:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1190:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 692:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::STANDARD};
-	case 693:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::NULLABLE};
-	case 1192:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1193:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1194:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// Just treat these as varchar with the max length
-	case 697:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD};
-	case 698:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE};
-	case 1197:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1198:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1199:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// DATE_A (ansidate)
-	case 748:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::STANDARD};
-	case 749:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::NULLABLE};
-	case 1248:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1249:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1250:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// DATE_T (integerdate)
-	case 752:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::STANDARD};
-	case 753:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::NULLABLE};
-	case 1252:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1253:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1254:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 756:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::STANDARD};
-	case 757:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::NULLABLE};
-	case 1256:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_IN};
-	case 1257:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1258:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_OUT};
-	default:
-		// TODO: More types
-		throw NotImplementedException("Unknown data type: %d", type);
-	}
-}
-
 void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
 	BeginRequest(sql, 'P');
 
@@ -344,7 +154,7 @@ void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &ty
 	for (int16_t col_idx = 0; col_idx < prep_info.ColumnCount; col_idx++) {
 		const auto col_info = reader.Read<CliPrepColInfoType>();
 
-		auto col_type = GetTeradataTypeFromParcel(col_info.DataType);
+		auto col_type = DecodeParcelType(col_info.DataType);
 		auto &td_type = col_type.type;
 
 		// Try to get the type mods from the format
@@ -422,7 +232,7 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 	for (uint16_t field_idx = 0; field_idx < field_count; field_idx++) {
 		const auto id_type = reader.Read<uint16_t>();
 
-		auto col_type = GetTeradataTypeFromParcel(id_type);
+		auto col_type = DecodeParcelType(id_type);
 		auto &td_type = col_type.type;
 
 		if (td_type.IsDecimal()) {

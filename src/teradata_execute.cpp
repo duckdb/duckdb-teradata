@@ -27,18 +27,7 @@ static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindIn
 	return_types.emplace_back(LogicalType::BOOLEAN);
 	names.emplace_back("Success");
 
-	// look up the database to query
-	auto db_name = input.inputs[0].GetValue<string>();
-	auto &db_manager = DatabaseManager::Get(context);
-	auto db = db_manager.GetDatabase(context, Identifier(db_name));
-	if (!db) {
-		throw BinderException("Failed to find attached database \"%s\" referenced in teradata_execute", db_name);
-	}
-	auto &catalog = db->GetCatalog();
-	if (catalog.GetCatalogType() != "teradata") {
-		throw BinderException("Attached database \"%s\" does not refer to a Teradata database", db_name);
-	}
-	auto &td_catalog = catalog.Cast<TeradataCatalog>();
+	auto &td_catalog = TeradataCatalog::GetAttached(context, input.inputs[0].GetValue<string>(), "teradata_execute");
 	return make_uniq<TeradataExecuteBindData>(td_catalog, input.inputs[1].GetValue<string>());
 }
 

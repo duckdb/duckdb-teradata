@@ -7,6 +7,8 @@
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "duckdb/planner/table_filter_set.hpp"
+
+#include <algorithm>
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_delete.hpp"
 #include "duckdb/planner/operator/logical_update.hpp"
@@ -75,65 +77,75 @@ InsertionOrderPreservingMap<string> TeradataDeleteUpdate::ParamsToString() const
 // Plan
 //----------------------------------------------------------------------------------------------------------------------
 
+static string JoinConjuncts(const string &left, const string &right) {
+	if (left.empty() || right.empty()) {
+		return left.empty() ? right : left;
+	}
+	return left + " AND " + right;
+}
+
+// The column a pushed-down filter applies to; empty if the filter is not on a table column
+static Identifier FilterColumnName(idx_t column_index, const vector<string> &names,
+                                   const vector<ColumnIndex> &column_ids) {
+	if (column_index >= names.size()) {
+		return Identifier();
+	}
+	const auto col_id = column_ids[column_index].GetPrimaryIndex();
+	if (col_id == COLUMN_IDENTIFIER_ROW_ID) {
+		throw NotImplementedException("RowID column not supported in Teradata DELETE statements - "
+		                              "use a primary key or unique index instead");
+	}
+	return Identifier(names[col_id]);
+}
+
+string TableFilterClause(const TableFilterSet &filters, const vector<string> &names,
+                         const vector<ColumnIndex> &column_ids, const string &statement) {
+	if (filters.HasMultiColumnFilters()) {
+		throw NotImplementedException("Multi-column filters are not supported in Teradata %s statements", statement);
+	}
+	string result;
+	for (const auto &entry : filters) {
+		BoundReferenceExpression column(FilterColumnName(entry.GetIndex(), names, column_ids), LogicalTypeId::INVALID,
+		                                0);
+		result = JoinConjuncts(result, entry.Filter().ToExpression(column)->ToString());
+	}
+	return result;
+}
+
+static bool IsSimpleProjection(const Expression &expr) {
+	switch (expr.GetExpressionType()) {
+	case ExpressionType::BOUND_REF:
+	case ExpressionType::BOUND_COLUMN_REF:
+	case ExpressionType::VALUE_CONSTANT:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static void CheckSimpleProjection(const PhysicalProjection &proj) {
+	const auto all_simple = std::all_of(proj.select_list.begin(), proj.select_list.end(),
+	                                    [](const unique_ptr<Expression> &expr) { return IsSimpleProjection(*expr); });
+	if (!all_simple) {
+		throw NotImplementedException("Unsupported expression type in projection - only simple deletes/updates "
+		                              "are supported in the Teradata connector");
+	}
+}
+
 // Attempt to reconstruct the WHERE clause from the physical operator tree
 static string ExtractFilters(PhysicalOperator &child, const string &statement) {
 	switch (child.type) {
-	case PhysicalOperatorType::FILTER: {
-		const auto &filter = child.Cast<PhysicalFilter>();
-		const auto result = ExtractFilters(child.children[0], statement);
-		auto filter_str = filter.expression->ToString();
-		if (result.empty()) {
-			return filter_str;
-		}
-		return result + " AND " + filter_str;
-	}
-	case PhysicalOperatorType::PROJECTION: {
-		const auto &proj = child.Cast<PhysicalProjection>();
-		for (auto &expr : proj.select_list) {
-			switch (expr->GetExpressionType()) {
-			case ExpressionType::BOUND_REF:
-			case ExpressionType::BOUND_COLUMN_REF:
-			case ExpressionType::VALUE_CONSTANT:
-				break;
-			default:
-				throw NotImplementedException("Unsupported expression type in projection - only simple deletes/updates "
-				                              "are supported in the Teradata connector");
-			}
-		}
+	case PhysicalOperatorType::FILTER:
+		return JoinConjuncts(ExtractFilters(child.children[0], statement),
+		                     child.Cast<PhysicalFilter>().expression->ToString());
+	case PhysicalOperatorType::PROJECTION:
+		CheckSimpleProjection(child.Cast<PhysicalProjection>());
 		return ExtractFilters(child.children[0], statement);
-	}
 	case PhysicalOperatorType::TABLE_SCAN: {
 		const auto &table_scan = child.Cast<PhysicalTableScan>();
-		if (!table_scan.table_filters) {
-			return string();
-		}
-		if (table_scan.table_filters->HasMultiColumnFilters()) {
-			throw NotImplementedException("Multi-column filters are not supported in Teradata %s statements",
-			                              statement);
-		}
-		string result;
-		for (const auto &entry : *table_scan.table_filters) {
-			const idx_t column_index = entry.GetIndex();
-			const auto &filter = entry.Filter();
-			Identifier column_name;
-			if (column_index < table_scan.names.size()) {
-				const auto col_id = table_scan.column_ids[column_index].GetPrimaryIndex();
-				if (col_id == COLUMN_IDENTIFIER_ROW_ID) {
-					throw NotImplementedException("RowID column not supported in Teradata DELETE statements - "
-					                              "use a primary key or unique index instead");
-				}
-				column_name = Identifier(table_scan.names[col_id]);
-			}
-			BoundReferenceExpression bound_ref(std::move(column_name), LogicalTypeId::INVALID, 0);
-			const auto filter_expr = filter.ToExpression(bound_ref);
-			auto filter_str = filter_expr->ToString();
-			if (result.empty()) {
-				result = std::move(filter_str);
-			} else {
-				result += " AND " + filter_str;
-			}
-		}
-		return result;
+		return table_scan.table_filters
+		           ? TableFilterClause(*table_scan.table_filters, table_scan.names, table_scan.column_ids, statement)
+				   : string();
 	}
 	default:
 		throw NotImplementedException("Unsupported operator type %s in %s statement - only simple deletes "

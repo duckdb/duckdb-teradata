@@ -5,44 +5,43 @@
 
 #include "teradata_secret.hpp"
 
+#include <algorithm>
+
 namespace duckdb {
 
 const char *TeradataSecret::TYPE = "teradata";
 
-static unique_ptr<BaseSecret> CreateTeradataSecretFunction(ClientContext &context, CreateSecretInput &input) {
-	vector<string> prefix_paths;
-	auto result = make_uniq<KeyValueSecret>(prefix_paths, TeradataSecret::TYPE, "config", input.name);
+static const char *const SECRET_KEYS[] = {"host", "user", "database", "password"};
 
-	bool has_host = false;
-	bool has_user = false;
-	bool has_database = false;
-	bool has_password = false;
-
-	for (const auto &named_param : input.options) {
-		auto lower_name = StringUtil::Lower(named_param.first);
-		if (lower_name == "host") {
-			result->secret_map["host"] = named_param.second.ToString();
-			has_host = true;
-		} else if (lower_name == "user") {
-			result->secret_map["user"] = named_param.second.ToString();
-			has_user = true;
-		} else if (lower_name == "database") {
-			result->secret_map["database"] = named_param.second.ToString();
-			has_database = true;
-		} else if (lower_name == "password") {
-			result->secret_map["password"] = named_param.second.ToString();
-			has_password = true;
-		} else {
-			throw InternalException("Unknown named parameter passed to teradata secret: " + lower_name);
+case_insensitive_map_t<string> TeradataSecret::ParseOptions(const case_insensitive_map_t<Value> &options) {
+	const auto is_secret_key = [](const string &name) {
+		return std::any_of(std::begin(SECRET_KEYS), std::end(SECRET_KEYS),
+		                   [&](const char *key) { return StringUtil::CIEquals(name, key); });
+	};
+	case_insensitive_map_t<string> result;
+	for (const auto &option : options) {
+		if (!is_secret_key(option.first)) {
+			throw InternalException("Unknown named parameter passed to teradata secret: " +
+			                        StringUtil::Lower(option.first));
 		}
+		result[StringUtil::Lower(option.first)] = option.second.ToString();
 	}
-
-	if (!has_host || !has_user || !has_database || !has_password) {
+	const auto is_present = [&](const char *key) {
+		return result.count(key) > 0;
+	};
+	if (!std::all_of(std::begin(SECRET_KEYS), std::end(SECRET_KEYS), is_present)) {
 		throw InvalidInputException(
 		    "Teradata secret must contain 'HOST', 'USER', 'DATABASE', and 'PASSWORD' parameters");
 	}
+	return result;
+}
 
-	// Set redact keys
+static unique_ptr<BaseSecret> CreateTeradataSecretFunction(ClientContext &context, CreateSecretInput &input) {
+	vector<string> prefix_paths;
+	auto result = make_uniq<KeyValueSecret>(prefix_paths, TeradataSecret::TYPE, "config", input.name);
+	for (auto &entry : TeradataSecret::ParseOptions(input.options)) {
+		result->secret_map[Identifier(entry.first)] = Value(entry.second);
+	}
 	result->redact_keys = {"password"};
 	return std::move(result);
 }

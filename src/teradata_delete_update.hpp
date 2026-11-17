@@ -7,6 +7,12 @@
 
 namespace duckdb {
 
+class TableFilterSet;
+
+//! The WHERE clause for a DELETE/UPDATE from the filters pushed into its table scan
+string TableFilterClause(const TableFilterSet &filters, const vector<string> &names,
+                         const vector<ColumnIndex> &column_ids, const string &statement);
+
 class TeradataDeleteUpdate final : public PhysicalOperator {
 public:
 	TeradataDeleteUpdate(PhysicalPlan &plan, LogicalOperator &op, TableCatalogEntry &table, string name, string query);

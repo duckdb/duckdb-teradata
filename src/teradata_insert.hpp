@@ -9,6 +9,20 @@
 
 namespace duckdb {
 
+//! A column an INSERT writes to
+struct InsertColumn {
+	string name;
+	LogicalType type;
+};
+
+//! The table columns an INSERT writes, in the order they appear in its input.
+//! `column_index_map` maps each table column to its input position (INVALID_INDEX if not inserted); empty means all.
+vector<PhysicalIndex> GetInsertColumnOrder(const physical_index_vector_t<idx_t> &column_index_map,
+                                           idx_t table_column_count);
+
+//! A parameterized Teradata INSERT statement for the given columns
+string BuildInsertSQL(const string &schema_name, const string &table_name, const vector<InsertColumn> &columns);
+
 class TeradataInsert final : public PhysicalOperator {
 public:
 	//! INSERT INTO

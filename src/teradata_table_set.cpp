@@ -10,106 +10,172 @@
 #include "duckdb/parser/parsed_data/create_table_info.hpp"
 #include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 
+#include <algorithm>
+
 namespace duckdb {
 
-static string GetDuckDBToTeradataTypeString(const LogicalType &type) {
-	// Convert the DuckDB type to a Teradata type, then get the string representation of that type
-	return TeradataType::FromDuckDB(type).ToString();
-}
+namespace {
 
-static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints,
-                                       bool use_primary_index) {
-	std::stringstream ss;
-
-	ss << "(";
-
-	// find all columns that have NOT NULL specified, but are NOT primary key
-	// columns
+//! The constraints of a table, indexed the way the column definitions need them
+struct ConstraintSummary {
 	logical_index_set_t not_null_columns;
 	logical_index_set_t unique_columns;
-	logical_index_set_t pk_columns;
-	unordered_set<string> multi_key_pks;
-	vector<string> extra_constraints;
-	for (auto &constraint : constraints) {
-		if (constraint->type == ConstraintType::NOT_NULL) {
-			auto &not_null = constraint->Cast<NotNullConstraint>();
-			not_null_columns.insert(not_null.index);
-		} else if (constraint->type == ConstraintType::UNIQUE) {
-			auto &pk = constraint->Cast<UniqueConstraint>();
-			if (pk.index.index != DConstants::INVALID_INDEX) {
-				// no columns specified: single column constraint
-				if (pk.is_primary_key) {
-					pk_columns.insert(pk.index);
-				} else {
-					unique_columns.insert(pk.index);
-				}
-			} else {
-				// multi-column constraint, this constraint needs to go at the end after
-				// all columns
-				if (pk.is_primary_key) {
-					// multi key pk column: insert set of columns into multi_key_pks
-					for (auto &col : pk.columns) {
-						multi_key_pks.insert(col.GetIdentifierName());
-					}
-				}
-				extra_constraints.push_back(constraint->ToString());
-			}
-		} else if (constraint->type == ConstraintType::FOREIGN_KEY) {
-			auto &fk = constraint->Cast<ForeignKeyConstraint>();
-			if (fk.info.type == ForeignKeyType::FK_TYPE_FOREIGN_KEY_TABLE ||
-			    fk.info.type == ForeignKeyType::FK_TYPE_SELF_REFERENCE_TABLE) {
-				extra_constraints.push_back(constraint->ToString());
-			}
-		} else {
-			extra_constraints.push_back(constraint->ToString());
+	logical_index_set_t primary_key_columns;
+	//! Columns of a multi-column primary key
+	unordered_set<string> multi_key_pk_columns;
+	//! Constraints that go after the columns
+	vector<string> table_constraints;
+};
+
+void AddUniqueConstraint(ConstraintSummary &summary, const UniqueConstraint &unique) {
+	if (unique.index.index != DConstants::INVALID_INDEX) {
+		// Single column constraint
+		auto &columns = unique.is_primary_key ? summary.primary_key_columns : summary.unique_columns;
+		columns.insert(unique.index);
+		return;
+	}
+	// Multi-column constraint, this goes at the end after all columns
+	if (unique.is_primary_key) {
+		for (auto &col : unique.columns) {
+			summary.multi_key_pk_columns.insert(col.GetIdentifierName());
 		}
 	}
-
-	for (auto &column : columns.Logical()) {
-		if (column.Oid() > 0) {
-			ss << ", ";
-		}
-		ss << KeywordHelper::WriteQuoted(column.Name().GetIdentifierName(), '"') << " ";
-		ss << GetDuckDBToTeradataTypeString(column.Type());
-		bool not_null = not_null_columns.find(column.Logical()) != not_null_columns.end();
-		bool is_single_key_pk = pk_columns.find(column.Logical()) != pk_columns.end();
-		bool is_multi_key_pk = multi_key_pks.find(column.Name().GetIdentifierName()) != multi_key_pks.end();
-		bool is_unique = unique_columns.find(column.Logical()) != unique_columns.end();
-		if (not_null && !is_single_key_pk && !is_multi_key_pk) {
-			// NOT NULL but not a primary key column
-			ss << " NOT NULL";
-		}
-		if (is_single_key_pk) {
-			// single column pk: insert constraint here
-			ss << " PRIMARY KEY NOT NULL";
-		}
-		if (is_unique) {
-			// single column unique: insert constraint here
-			ss << " UNIQUE";
-		}
-		if (column.Generated()) {
-			throw NotImplementedException("Generated columns are not supported in Teradata");
-		} else if (column.HasDefaultValue()) {
-			ss << " DEFAULT (" << column.DefaultValue().ToString() << ")";
-		}
-	}
-	// print any extra constraints that still need to be printed
-	for (auto &extra_constraint : extra_constraints) {
-		ss << ", ";
-		ss << extra_constraint;
-	}
-
-	ss << ")";
-
-	if (!use_primary_index) {
-		// Also dont make a primary index
-		ss << " NO PRIMARY INDEX";
-	}
-
-	return ss.str();
+	summary.table_constraints.push_back(unique.ToString());
 }
 
-static string GetTeradataCreateTableSQL(const CreateTableInfo &info, bool use_primary_index) {
+bool IsTableForeignKey(const ForeignKeyConstraint &fk) {
+	return fk.info.type == ForeignKeyType::FK_TYPE_FOREIGN_KEY_TABLE ||
+	       fk.info.type == ForeignKeyType::FK_TYPE_SELF_REFERENCE_TABLE;
+}
+
+ConstraintSummary SummarizeConstraints(const vector<unique_ptr<Constraint>> &constraints) {
+	ConstraintSummary summary;
+	for (auto &constraint : constraints) {
+		switch (constraint->type) {
+		case ConstraintType::NOT_NULL:
+			summary.not_null_columns.insert(constraint->Cast<NotNullConstraint>().index);
+			break;
+		case ConstraintType::UNIQUE:
+			AddUniqueConstraint(summary, constraint->Cast<UniqueConstraint>());
+			break;
+		case ConstraintType::FOREIGN_KEY:
+			if (IsTableForeignKey(constraint->Cast<ForeignKeyConstraint>())) {
+				summary.table_constraints.push_back(constraint->ToString());
+			}
+			break;
+		default:
+			summary.table_constraints.push_back(constraint->ToString());
+			break;
+		}
+	}
+	return summary;
+}
+
+string ColumnDefinitionSQL(const ColumnDefinition &column, const ConstraintSummary &summary) {
+	if (column.Generated()) {
+		throw NotImplementedException("Generated columns are not supported in Teradata");
+	}
+	const auto contains = [&](const logical_index_set_t &set) {
+		return set.count(column.Logical()) > 0;
+	};
+	const auto is_single_key_pk = contains(summary.primary_key_columns);
+	const auto is_multi_key_pk = summary.multi_key_pk_columns.count(column.Name().GetIdentifierName()) > 0;
+
+	vector<string> parts {KeywordHelper::WriteQuoted(column.Name().GetIdentifierName(), '"'),
+	                      TeradataType::FromDuckDB(column.Type()).ToString()};
+	if (contains(summary.not_null_columns) && !is_single_key_pk && !is_multi_key_pk) {
+		parts.emplace_back("NOT NULL");
+	}
+	if (is_single_key_pk) {
+		parts.emplace_back("PRIMARY KEY NOT NULL");
+	}
+	if (contains(summary.unique_columns)) {
+		parts.emplace_back("UNIQUE");
+	}
+	if (column.HasDefaultValue()) {
+		parts.push_back("DEFAULT (" + column.DefaultValue().ToString() + ")");
+	}
+	return StringUtil::Join(parts, " ");
+}
+
+string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints,
+                                bool use_primary_index) {
+	const auto summary = SummarizeConstraints(constraints);
+	vector<string> definitions;
+	for (auto &column : columns.Logical()) {
+		definitions.push_back(ColumnDefinitionSQL(column, summary));
+	}
+	definitions.insert(definitions.end(), summary.table_constraints.begin(), summary.table_constraints.end());
+	return "(" + StringUtil::Join(definitions, ", ") + ")" + (use_primary_index ? "" : " NO PRIMARY INDEX");
+}
+
+//! A column of a catalog table, or nothing if its type is not supported
+optional<pair<ColumnDefinition, TeradataType>> TryConvertColumn(const TeradataColumnRow &row) {
+	TeradataType td_type = TeradataType::FromShortCode(row.type_code);
+	if (td_type.GetId() == TeradataTypeId::INVALID) {
+		return {};
+	}
+	if (td_type.HasLengthModifier()) {
+		td_type.SetLength(row.length);
+	}
+	try {
+		return make_pair(ColumnDefinition(Identifier(row.column_name), td_type.ToDuckDB()), td_type);
+	} catch (Exception &) {
+		return {};
+	}
+}
+
+//! The definition of one table from its column rows, or nullptr if any column has an unsupported type
+unique_ptr<TeradataTableInfo> TryBuildTableInfo(const Identifier &schema_name,
+                                                vector<TeradataColumnRow>::const_iterator begin,
+                                                vector<TeradataColumnRow>::const_iterator end) {
+	auto info = make_uniq<TeradataTableInfo>();
+	info->SetQualifiedName(QualifiedName(Identifier(), schema_name, Identifier(begin->table_name)));
+	for (auto row = begin; row != end; ++row) {
+		auto column = TryConvertColumn(*row);
+		if (!column) {
+			return nullptr;
+		}
+		info->columns.AddColumn(std::move(column->first));
+		info->teradata_types.push_back(column->second);
+	}
+	return info;
+}
+
+vector<TeradataColumnRow> ReadColumnRows(TeradataQueryResult &result) {
+	vector<TeradataColumnRow> rows;
+	for (auto &chunk : result.Chunks()) {
+		chunk.Flatten();
+		const auto tbl_names = FlatVector::GetData<string_t>(chunk.data[0]);
+		const auto col_names = FlatVector::GetData<string_t>(chunk.data[1]);
+		const auto col_types = FlatVector::GetData<string_t>(chunk.data[2]);
+		const auto col_sizes = FlatVector::GetData<int32_t>(chunk.data[3]);
+		for (idx_t row_idx = 0; row_idx < chunk.size(); row_idx++) {
+			rows.push_back({tbl_names[row_idx].GetString(), col_names[row_idx].GetString(),
+			                col_types[row_idx].GetString(), col_sizes[row_idx]});
+		}
+	}
+	return rows;
+}
+
+} // namespace
+
+vector<unique_ptr<TeradataTableInfo>> BuildTableInfos(const Identifier &schema_name,
+                                                      const vector<TeradataColumnRow> &rows) {
+	vector<unique_ptr<TeradataTableInfo>> result;
+	for (auto begin = rows.begin(); begin != rows.end();) {
+		const auto end = std::find_if(
+		    begin, rows.end(), [&](const TeradataColumnRow &row) { return row.table_name != begin->table_name; });
+		auto info = TryBuildTableInfo(schema_name, begin, end);
+		if (info) {
+			result.push_back(std::move(info));
+		}
+		begin = end;
+	}
+	return result;
+}
+
+string GetTeradataCreateTableSQL(const CreateTableInfo &info, bool use_primary_index) {
 	std::stringstream ss;
 
 	ss << "CREATE TABLE ";
@@ -171,61 +237,9 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 
 	const auto result = conn.Query(query, false, context);
 
-	TeradataTableInfo info;
-	info.SetSchema(schema.name);
-	string current_table;
-
-	bool skip_table = false;
-
-	// Iterate over the chunks in the result
-	for (auto &chunk : result->Chunks()) {
-		chunk.Flatten();
-		const auto count = chunk.size();
-		auto &tbl_name_vec = chunk.data[0];
-		auto &col_name_vec = chunk.data[1];
-		auto &col_type_vec = chunk.data[2];
-		auto &col_size_vec = chunk.data[3];
-
-		for (idx_t row_idx = 0; row_idx < count; row_idx++) {
-			const auto tbl_name = FlatVector::GetData<string_t>(tbl_name_vec)[row_idx];
-			const auto col_name = FlatVector::GetData<string_t>(col_name_vec)[row_idx];
-			const auto col_type = FlatVector::GetData<string_t>(col_type_vec)[row_idx];
-			const auto col_size = FlatVector::GetData<int32_t>(col_size_vec)[row_idx];
-
-			if (tbl_name != current_table) {
-				// We have a new table
-				if (!current_table.empty() && !skip_table) {
-					// Finish the previous table
-					entries[current_table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
-				}
-				skip_table = false;
-
-				// Reset the info
-				current_table = tbl_name.GetString();
-				info = TeradataTableInfo();
-				info.SetQualifiedName(QualifiedName(Identifier(), schema.name, Identifier(current_table)));
-			}
-
-			// Add the columns
-			try {
-				TeradataType td_type = TeradataType::FromShortCode(col_type.GetData());
-				if (td_type.HasLengthModifier()) {
-					td_type.SetLength(col_size);
-				}
-
-				const auto duck_type = td_type.ToDuckDB();
-				info.columns.AddColumn(ColumnDefinition(Identifier(col_name.GetString()), duck_type));
-				info.teradata_types.push_back(td_type);
-			} catch (...) {
-				// Ignore the column type (and this table) for now, just make this work
-				skip_table = true;
-			}
-		}
-	}
-
-	if (!current_table.empty() && !skip_table) {
-		// Finish the last table
-		entries[current_table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
+	for (auto &info : BuildTableInfos(schema.name, ReadColumnRows(*result))) {
+		const auto table_name = info->GetTableName().GetIdentifierName();
+		entries[table_name] = make_uniq<TeradataTableEntry>(catalog, schema, *info);
 	}
 }
 

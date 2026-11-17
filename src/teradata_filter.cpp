@@ -9,6 +9,9 @@
 #include "duckdb/planner/filter/table_filter_functions.hpp"
 #include "duckdb/planner/table_filter_set.hpp"
 
+#include <algorithm>
+#include <iterator>
+
 namespace duckdb {
 
 static string TransformBlob(const string &val) {
@@ -37,117 +40,147 @@ static string TransformLiteral(const Value &val) {
 	}
 }
 
-static string TransformComparison(ExpressionType type) {
-	switch (type) {
-	case ExpressionType::COMPARE_EQUAL:
-		return "=";
-	case ExpressionType::COMPARE_NOTEQUAL:
-		return "<>";
-	case ExpressionType::COMPARE_LESSTHAN:
-		return "<";
-	case ExpressionType::COMPARE_GREATERTHAN:
-		return ">";
-	case ExpressionType::COMPARE_LESSTHANOREQUALTO:
-		return "<=";
-	case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
-		return ">=";
-	default:
-		return string();
-	}
+// A translated filter predicate. An empty optional means the predicate always holds and can be dropped,
+// e.g. an optional or join-derived filter that DuckDB does not need for correctness.
+using Predicate = optional<string>;
+
+struct ComparisonEntry {
+	ExpressionType type;
+	const char *op;
+};
+
+static const ComparisonEntry COMPARISONS[] = {
+    {ExpressionType::COMPARE_EQUAL, "="},
+    {ExpressionType::COMPARE_NOTEQUAL, "<>"},
+    {ExpressionType::COMPARE_LESSTHAN, "<"},
+    {ExpressionType::COMPARE_GREATERTHAN, ">"},
+    {ExpressionType::COMPARE_LESSTHANOREQUALTO, "<="},
+    {ExpressionType::COMPARE_GREATERTHANOREQUALTO, ">="},
+};
+
+static optional_ptr<const ComparisonEntry> FindComparison(ExpressionType type) {
+	const auto entry = std::find_if(std::begin(COMPARISONS), std::end(COMPARISONS),
+	                                [&](const ComparisonEntry &e) { return e.type == type; });
+	return entry == std::end(COMPARISONS) ? nullptr : entry;
 }
 
-// Filters produced by DuckDB itself (join-derived or optional) that are never needed for correctness.
-// Returns true if the filter can be skipped entirely.
+// Join-derived filters that DuckDB keeps enforcing itself, so they never need to be pushed down
 static bool IsSkippableInternalFilter(const BoundFunctionExpression &func) {
 	const auto &name = func.Function().GetName();
 	return name == DynamicFilterScalarFun::NAME || name == BloomFilterScalarFun::NAME ||
 	       name == PrefixRangeScalarFun::NAME;
 }
 
-// Translate a pushed-down filter expression into Teradata SQL.
-// An empty result means the (sub)expression is always satisfied and can be dropped (e.g. an optional filter).
-// Expressions that cannot be translated throw, so that no filter is ever silently ignored.
-static string TransformExpression(const string &column_name, const Expression &expr) {
+[[noreturn]] static void ThrowUnsupported(const Expression &expr) {
+	throw NotImplementedException("Unsupported filter in Teradata scan: %s", expr.ToString());
+}
+
+// An operand of a predicate: the filtered column or a constant
+static string TransformOperand(const string &column_name, const Expression &expr) {
 	switch (expr.GetExpressionClass()) {
 	case ExpressionClass::BOUND_REF:
 	case ExpressionClass::BOUND_COLUMN_REF:
 		return column_name;
 	case ExpressionClass::BOUND_CONSTANT:
 		return TransformLiteral(expr.Cast<BoundConstantExpression>().GetValue());
-	case ExpressionClass::BOUND_CONJUNCTION: {
-		auto &conj = expr.Cast<BoundConjunctionExpression>();
-		const auto is_and = conj.GetExpressionType() == ExpressionType::CONJUNCTION_AND;
-		vector<string> entries;
-		for (auto &child : conj.GetChildren()) {
-			auto child_str = TransformExpression(column_name, *child);
-			if (child_str.empty()) {
-				if (!is_and) {
-					// "x OR TRUE" is always TRUE
-					return string();
-				}
-				continue;
-			}
-			entries.push_back(std::move(child_str));
-		}
-		if (entries.empty()) {
-			return string();
-		}
-		return "(" + StringUtil::Join(entries, is_and ? " AND " : " OR ") + ")";
+	default:
+		ThrowUnsupported(expr);
 	}
-	case ExpressionClass::BOUND_OPERATOR: {
-		auto &op = expr.Cast<BoundOperatorExpression>();
-		auto &children = op.GetChildren();
-		switch (op.GetExpressionType()) {
-		case ExpressionType::OPERATOR_IS_NULL:
-			return TransformExpression(column_name, *children[0]) + " IS NULL";
-		case ExpressionType::OPERATOR_IS_NOT_NULL:
-			return TransformExpression(column_name, *children[0]) + " IS NOT NULL";
-		case ExpressionType::COMPARE_IN:
-		case ExpressionType::COMPARE_NOT_IN: {
-			string in_list;
-			for (idx_t i = 1; i < children.size(); i++) {
-				if (i > 1) {
-					in_list += ", ";
-				}
-				in_list += TransformExpression(column_name, *children[i]);
-			}
-			const auto in_op = op.GetExpressionType() == ExpressionType::COMPARE_IN ? " IN (" : " NOT IN (";
-			return TransformExpression(column_name, *children[0]) + in_op + in_list + ")";
-		}
-		default:
-			break;
-		}
-		break;
+}
+
+static vector<string> TransformOperands(const string &column_name, const vector<unique_ptr<Expression>> &exprs) {
+	vector<string> result;
+	std::transform(exprs.begin(), exprs.end(), std::back_inserter(result),
+	               [&](const unique_ptr<Expression> &expr) { return TransformOperand(column_name, *expr); });
+	return result;
+}
+
+static Predicate TransformPredicate(const string &column_name, const Expression &expr);
+
+static Predicate TransformConjunction(const string &column_name, const BoundConjunctionExpression &conj) {
+	vector<Predicate> children;
+	for (auto &child : conj.GetChildren()) {
+		children.push_back(TransformPredicate(column_name, *child));
 	}
-	case ExpressionClass::BOUND_FUNCTION: {
-		auto &func = expr.Cast<BoundFunctionExpression>();
-		if (ExpressionFilter::IsRootOptionalExpression(func)) {
-			// Optional filters are not required for correctness - push down the child if we can
-			auto child = ExpressionFilter::GetOptionalFilterChild(func);
-			if (!child) {
-				return string();
-			}
-			try {
-				return TransformExpression(column_name, *child);
-			} catch (NotImplementedException &) {
-				return string();
-			}
+	const auto is_always_true = [](const Predicate &p) {
+		return !p.has_value();
+	};
+	const auto is_and = conj.GetExpressionType() == ExpressionType::CONJUNCTION_AND;
+	if (!is_and && std::any_of(children.begin(), children.end(), is_always_true)) {
+		// "x OR TRUE" is always TRUE
+		return {};
+	}
+	vector<string> terms;
+	for (auto &child : children) {
+		if (child) {
+			terms.push_back(std::move(*child));
 		}
-		if (IsSkippableInternalFilter(func)) {
-			return string();
-		}
-		const auto op_str = TransformComparison(func.GetExpressionType());
-		if (!op_str.empty()) {
-			auto left = TransformExpression(column_name, BoundComparisonExpression::Left(func));
-			auto right = TransformExpression(column_name, BoundComparisonExpression::Right(func));
-			return StringUtil::Format("%s %s %s", left, op_str, right);
-		}
-		break;
+	}
+	if (terms.empty()) {
+		return {};
+	}
+	return "(" + StringUtil::Join(terms, is_and ? " AND " : " OR ") + ")";
+}
+
+static Predicate TransformOperator(const string &column_name, const BoundOperatorExpression &op) {
+	auto operands = TransformOperands(column_name, op.GetChildren());
+	switch (op.GetExpressionType()) {
+	case ExpressionType::OPERATOR_IS_NULL:
+		return operands[0] + " IS NULL";
+	case ExpressionType::OPERATOR_IS_NOT_NULL:
+		return operands[0] + " IS NOT NULL";
+	case ExpressionType::COMPARE_IN:
+	case ExpressionType::COMPARE_NOT_IN: {
+		const vector<string> in_list(operands.begin() + 1, operands.end());
+		const auto in_op = op.GetExpressionType() == ExpressionType::COMPARE_IN ? " IN (" : " NOT IN (";
+		return operands[0] + in_op + StringUtil::Join(in_list, ", ") + ")";
 	}
 	default:
-		break;
+		ThrowUnsupported(op);
 	}
-	throw NotImplementedException("Unsupported filter in Teradata scan: %s", expr.ToString());
+}
+
+// Optional filters are not required for correctness: push the child down when we can, otherwise drop it
+static Predicate TransformOptional(const string &column_name, const BoundFunctionExpression &func) {
+	const auto child = ExpressionFilter::GetOptionalFilterChild(func);
+	if (!child) {
+		return {};
+	}
+	try {
+		return TransformPredicate(column_name, *child);
+	} catch (NotImplementedException &) {
+		return {};
+	}
+}
+
+static Predicate TransformFunction(const string &column_name, const BoundFunctionExpression &func) {
+	if (ExpressionFilter::IsRootOptionalExpression(func)) {
+		return TransformOptional(column_name, func);
+	}
+	if (IsSkippableInternalFilter(func)) {
+		return {};
+	}
+	const auto comparison = FindComparison(func.GetExpressionType());
+	if (!comparison) {
+		ThrowUnsupported(func);
+	}
+	return StringUtil::Format("%s %s %s", TransformOperand(column_name, BoundComparisonExpression::Left(func)),
+	                          comparison->op, TransformOperand(column_name, BoundComparisonExpression::Right(func)));
+}
+
+// Translate a pushed-down filter expression into Teradata SQL.
+// Expressions that cannot be translated throw, so that no filter is ever silently ignored.
+static Predicate TransformPredicate(const string &column_name, const Expression &expr) {
+	switch (expr.GetExpressionClass()) {
+	case ExpressionClass::BOUND_CONJUNCTION:
+		return TransformConjunction(column_name, expr.Cast<BoundConjunctionExpression>());
+	case ExpressionClass::BOUND_OPERATOR:
+		return TransformOperator(column_name, expr.Cast<BoundOperatorExpression>());
+	case ExpressionClass::BOUND_FUNCTION:
+		return TransformFunction(column_name, expr.Cast<BoundFunctionExpression>());
+	default:
+		ThrowUnsupported(expr);
+	}
 }
 
 string TeradataFilter::Transform(const vector<column_t> &column_ids, optional_ptr<TableFilterSet> filters,
@@ -156,22 +189,17 @@ string TeradataFilter::Transform(const vector<column_t> &column_ids, optional_pt
 		throw NotImplementedException("Multi-column filters are not supported in Teradata scans");
 	}
 
-	string result;
+	vector<string> terms;
 	for (const auto &entry : *filters) {
 		const idx_t column_index = entry.GetIndex();
-		auto col_name = KeywordHelper::WriteQuoted(names[column_ids[column_index]], '"');
-		auto &expr_filter = ExpressionFilter::GetExpressionFilter(entry.Filter(), "TeradataFilter::Transform");
-		auto filter_text = TransformExpression(col_name, *expr_filter.expr);
-		if (filter_text.empty()) {
-			continue;
+		const auto col_name = KeywordHelper::WriteQuoted(names[column_ids[column_index]], '"');
+		const auto &expr_filter = ExpressionFilter::GetExpressionFilter(entry.Filter(), "TeradataFilter::Transform");
+		auto predicate = TransformPredicate(col_name, *expr_filter.expr);
+		if (predicate) {
+			terms.push_back(std::move(*predicate));
 		}
-		if (!result.empty()) {
-			result += " AND ";
-		}
-		result += filter_text;
 	}
-
-	return result;
+	return StringUtil::Join(terms, " AND ");
 }
 
 } // namespace duckdb
