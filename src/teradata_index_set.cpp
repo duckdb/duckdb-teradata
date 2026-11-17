@@ -16,10 +16,11 @@ TeradataIndexSet::TeradataIndexSet(TeradataSchemaEntry &schema) : TeradataInSche
 }
 
 static void UnqualifyColumnReferences(ParsedExpression &expr) {
-	if (expr.type == ExpressionType::COLUMN_REF) {
+	if (expr.GetExpressionType() == ExpressionType::COLUMN_REF) {
 		auto &colref = expr.Cast<ColumnRefExpression>();
-		auto name = std::move(colref.column_names.back());
-		colref.column_names = {std::move(name)};
+		auto &column_names = colref.ColumnNamesMutable();
+		auto name = std::move(column_names.back());
+		column_names = {std::move(name)};
 		return;
 	}
 	ParsedExpressionIterator::EnumerateChildren(expr, UnqualifyColumnReferences);
@@ -32,7 +33,7 @@ static string GetCreateIndexSQL(CreateIndexInfo &info, TableCatalogEntry &tbl) {
 		sql += " UNIQUE";
 	}
 	sql += " INDEX ";
-	sql += KeywordHelper::WriteOptionallyQuoted(info.index_name, '"');
+	sql += KeywordHelper::WriteOptionallyQuoted(info.GetIndexName().GetIdentifierName(), '"');
 	sql += "(";
 	for (idx_t i = 0; i < info.parsed_expressions.size(); i++) {
 		if (i > 0) {
@@ -43,8 +44,8 @@ static string GetCreateIndexSQL(CreateIndexInfo &info, TableCatalogEntry &tbl) {
 	}
 	sql += ")";
 	sql += " ON ";
-	sql += KeywordHelper::WriteOptionallyQuoted(tbl.schema.name, '"') + ".";
-	sql += KeywordHelper::WriteOptionallyQuoted(tbl.name, '"');
+	sql += KeywordHelper::WriteOptionallyQuoted(tbl.schema.name.GetIdentifierName(), '"') + ".";
+	sql += KeywordHelper::WriteOptionallyQuoted(tbl.name.GetIdentifierName(), '"');
 	return sql;
 }
 
@@ -57,7 +58,8 @@ optional_ptr<CatalogEntry> TeradataIndexSet::CreateIndex(ClientContext &context,
 	const auto sql = GetCreateIndexSQL(info, table);
 	td_connection.Execute(sql);
 
-	auto index_entry = make_uniq<TeradataIndexEntry>(schema.ParentCatalog(), schema, info, table.name);
+	auto index_entry =
+	    make_uniq<TeradataIndexEntry>(schema.ParentCatalog(), schema, info, table.name.GetIdentifierName());
 	return CreateEntry(std::move(index_entry));
 }
 
@@ -110,16 +112,16 @@ void TeradataIndexSet::LoadEntries(ClientContext &context) {
 			}
 
 			CreateIndexInfo info;
-			info.schema = schema.name;
-			info.table = tbl_name;
-			info.index_name = idx_name;
+			info.SetSchema(schema.name);
+			info.table = Identifier(tbl_name);
+			info.SetIndexName(Identifier(idx_name));
 			info.index_type = idx_type;
 			info.constraint_type = idx_flag;
 
 			// TODO: We need to check if there are multiple columns in the index
-			info.expressions.push_back(make_uniq<ColumnRefExpression>(col_name));
+			info.expressions.push_back(make_uniq<ColumnRefExpression>(Identifier(col_name)));
 
-			auto index_entry = make_uniq<TeradataIndexEntry>(catalog, schema, info, info.table);
+			auto index_entry = make_uniq<TeradataIndexEntry>(catalog, schema, info, info.table.GetIdentifierName());
 			CreateEntry(std::move(index_entry));
 		}
 	}

@@ -5,6 +5,8 @@
 #include "duckdb/execution/operator/filter/physical_filter.hpp"
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
+#include "duckdb/execution/physical_plan_generator.hpp"
+#include "duckdb/planner/table_filter_set.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 #include "duckdb/planner/operator/logical_delete.hpp"
 #include "duckdb/planner/operator/logical_update.hpp"
@@ -65,7 +67,7 @@ string TeradataDeleteUpdate::GetName() const {
 
 InsertionOrderPreservingMap<string> TeradataDeleteUpdate::ParamsToString() const {
 	InsertionOrderPreservingMap<string> result;
-	result["Table Name"] = table.name;
+	result["Table Name"] = table.name.GetIdentifierName();
 	return result;
 }
 
@@ -88,7 +90,7 @@ static string ExtractFilters(PhysicalOperator &child, const string &statement) {
 	case PhysicalOperatorType::PROJECTION: {
 		const auto &proj = child.Cast<PhysicalProjection>();
 		for (auto &expr : proj.select_list) {
-			switch (expr->type) {
+			switch (expr->GetExpressionType()) {
 			case ExpressionType::BOUND_REF:
 			case ExpressionType::BOUND_COLUMN_REF:
 			case ExpressionType::VALUE_CONSTANT:
@@ -105,21 +107,25 @@ static string ExtractFilters(PhysicalOperator &child, const string &statement) {
 		if (!table_scan.table_filters) {
 			return string();
 		}
+		if (table_scan.table_filters->HasMultiColumnFilters()) {
+			throw NotImplementedException("Multi-column filters are not supported in Teradata %s statements",
+			                              statement);
+		}
 		string result;
-		for (auto &entry : table_scan.table_filters->filters) {
-			const auto column_index = entry.first;
-			const auto &filter = entry.second;
-			string column_name;
+		for (const auto &entry : *table_scan.table_filters) {
+			const idx_t column_index = entry.GetIndex();
+			const auto &filter = entry.Filter();
+			Identifier column_name;
 			if (column_index < table_scan.names.size()) {
 				const auto col_id = table_scan.column_ids[column_index].GetPrimaryIndex();
 				if (col_id == COLUMN_IDENTIFIER_ROW_ID) {
 					throw NotImplementedException("RowID column not supported in Teradata DELETE statements - "
 					                              "use a primary key or unique index instead");
 				}
-				column_name = table_scan.names[col_id];
+				column_name = Identifier(table_scan.names[col_id]);
 			}
 			BoundReferenceExpression bound_ref(std::move(column_name), LogicalTypeId::INVALID, 0);
-			const auto filter_expr = filter->ToExpression(bound_ref);
+			const auto filter_expr = filter.ToExpression(bound_ref);
 			auto filter_str = filter_expr->ToString();
 			if (result.empty()) {
 				result = std::move(filter_str);
@@ -144,9 +150,9 @@ static string ExtractFilters(PhysicalOperator &child, const string &statement) {
 // Attempt to reconstruct the DELETE statement from the logical delete operator and its child
 static string ConstructDeleteStatement(LogicalDelete &op, PhysicalOperator &child) {
 	string result = "DELETE FROM ";
-	result += KeywordHelper::WriteQuoted(op.table.schema.name, '"');
+	result += KeywordHelper::WriteQuoted(op.table.schema.name.GetIdentifierName(), '"');
 	result += ".";
-	result += KeywordHelper::WriteQuoted(op.table.name, '"');
+	result += KeywordHelper::WriteQuoted(op.table.name.GetIdentifierName(), '"');
 	const auto filters = ExtractFilters(child, "DELETE");
 	if (!filters.empty()) {
 		result += " WHERE " + filters;
@@ -174,9 +180,9 @@ static string ConstructUpdateStatement(LogicalUpdate &op, PhysicalOperator &chil
 	// FIXME - all of this is pretty gnarly, we should provide a hook earlier on
 	// in the planning process to convert this into a SQL statement
 	string result = "UPDATE";
-	result += KeywordHelper::WriteQuoted(op.table.schema.name, '"');
+	result += KeywordHelper::WriteQuoted(op.table.schema.name.GetIdentifierName(), '"');
 	result += ".";
-	result += KeywordHelper::WriteQuoted(op.table.name, '"');
+	result += KeywordHelper::WriteQuoted(op.table.name.GetIdentifierName(), '"');
 	result += " SET ";
 	if (child.type != PhysicalOperatorType::PROJECTION) {
 		throw NotImplementedException("Teradata Update not supported - Expected the "
@@ -188,17 +194,17 @@ static string ConstructUpdateStatement(LogicalUpdate &op, PhysicalOperator &chil
 			result += ", ";
 		}
 		auto &col = op.table.GetColumn(op.table.GetColumns().PhysicalToLogical(op.columns[c]));
-		result += KeywordHelper::WriteQuoted(col.GetName(), '"');
+		result += KeywordHelper::WriteQuoted(col.GetName().GetIdentifierName(), '"');
 		result += " = ";
-		if (op.expressions[c]->type == ExpressionType::VALUE_DEFAULT) {
+		if (op.expressions[c]->GetExpressionType() == ExpressionType::VALUE_DEFAULT) {
 			result += "DEFAULT";
 			continue;
 		}
-		if (op.expressions[c]->type != ExpressionType::BOUND_REF) {
+		if (op.expressions[c]->GetExpressionType() != ExpressionType::BOUND_REF) {
 			throw NotImplementedException("Teradata Update not supported - Expected a bound reference expression");
 		}
 		auto &ref = op.expressions[c]->Cast<BoundReferenceExpression>();
-		result += proj.select_list[ref.index]->ToString();
+		result += proj.select_list[ref.Index()]->ToString();
 	}
 	result += " ";
 	auto filters = ExtractFilters(child.children[0], "UPDATE");

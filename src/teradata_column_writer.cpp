@@ -251,7 +251,7 @@ public:
 		if (value) {
 			auto ts = *value;
 
-			if (Timestamp::IsFinite(ts)) {
+			if (ts.IsFinite()) {
 				ts = Timestamp::FromEpochMs(ts.value);
 			}
 
@@ -290,7 +290,7 @@ public:
 		if (value) {
 			auto ts = *value;
 
-			if (Timestamp::IsFinite(ts)) {
+			if (ts.IsFinite()) {
 				ts = Timestamp::FromEpochSeconds(ts.value);
 			}
 

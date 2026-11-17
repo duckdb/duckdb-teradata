@@ -41,21 +41,25 @@ optional_ptr<CatalogEntry> TeradataCatalogSet::CreateEntry(unique_ptr<CatalogEnt
 }
 
 void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
+	const auto &qname = info.GetQualifiedName();
+	const auto &entry_name = qname.Name().GetIdentifierName();
+	const auto &schema_name = qname.Schema().GetIdentifierName();
+
 	string drop_query = "DROP ";
 	drop_query += CatalogTypeToString(info.type) + " ";
 	if (info.if_not_found == OnEntryNotFound::RETURN_NULL) {
 
 		// Teradata doesnt support IF EXISTS, so check if the entry exists first
-		const auto entry = GetEntry(context, info.name);
+		const auto entry = GetEntry(context, entry_name);
 		if (!entry) {
 			return;
 		}
 	}
 
-	if (!info.schema.empty()) {
-		drop_query += KeywordHelper::WriteQuoted(info.schema, '"') + ".";
+	if (!schema_name.empty()) {
+		drop_query += KeywordHelper::WriteQuoted(schema_name, '"') + ".";
 	}
-	drop_query += KeywordHelper::WriteQuoted(info.name, '"');
+	drop_query += KeywordHelper::WriteQuoted(entry_name, '"');
 	if (info.cascade) {
 		drop_query += "CASCADE";
 	}
@@ -68,7 +72,7 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 
 	// erase the entry from the catalog set
 	lock_guard<mutex> l(entry_lock);
-	entries.erase(info.name);
+	entries.erase(entry_name);
 }
 
 optional_ptr<CatalogEntry> TeradataCatalogSet::GetEntry(ClientContext &context, const string &name) {

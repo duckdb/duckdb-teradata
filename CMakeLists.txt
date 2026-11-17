@@ -56,8 +56,13 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
                                              "AppleClang")
   target_compile_options(${LOADABLE_EXTENSION_NAME}
-                         PRIVATE -Wno-deprecated-register)
-  target_compile_options(${EXTENSION_NAME} PRIVATE -Wno-deprecated-register)
+                         PRIVATE -Wno-deprecated-register -Wno-register)
+  target_compile_options(${EXTENSION_NAME} PRIVATE -Wno-deprecated-register
+                                                   -Wno-register)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  # The Teradata headers use the 'register' keyword, which C++17 disallows
+  target_compile_options(${LOADABLE_EXTENSION_NAME} PRIVATE -Wno-register)
+  target_compile_options(${EXTENSION_NAME} PRIVATE -Wno-register)
 endif()
 
 target_include_directories(${LOADABLE_EXTENSION_NAME} PRIVATE include

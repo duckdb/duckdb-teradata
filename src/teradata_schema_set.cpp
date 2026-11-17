@@ -39,8 +39,7 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 			const auto name = FlatVector::GetData<string_t>(name_vec)[row_idx].GetString();
 
 			CreateSchemaInfo info;
-			info.catalog = catalog.GetName();
-			info.schema = name;
+			info.SetQualification(catalog.GetName(), Identifier(name));
 			info.comment = comment_vec.GetValue(row_idx);
 
 			// Pass the entry along

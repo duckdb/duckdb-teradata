@@ -1,28 +1,15 @@
 #include "teradata_filter.hpp"
 
-#include <teradata_type.hpp>
-#include <duckdb/planner/filter/constant_filter.hpp>
-#include <duckdb/planner/filter/in_filter.hpp>
-#include <duckdb/planner/filter/optional_filter.hpp>
-#include <duckdb/planner/filter/struct_filter.hpp>
+#include "duckdb/planner/expression/bound_comparison_expression.hpp"
+#include "duckdb/planner/expression/bound_conjunction_expression.hpp"
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/planner/expression/bound_operator_expression.hpp"
+#include "duckdb/planner/filter/expression_filter.hpp"
+#include "duckdb/planner/filter/table_filter_functions.hpp"
+#include "duckdb/planner/table_filter_set.hpp"
 
 namespace duckdb {
-
-static string TransformFilter(const string &column_name, const TableFilter &filter);
-static string CreateExpression(const string &column_name, const vector<unique_ptr<TableFilter>> &filters,
-                               const string &op) {
-	vector<string> filter_entries;
-	for (auto &filter : filters) {
-		auto filter_str = TransformFilter(column_name, *filter);
-		if (!filter_str.empty()) {
-			filter_entries.push_back(std::move(filter_str));
-		}
-	}
-	if (filter_entries.empty()) {
-		return string();
-	}
-	return "(" + StringUtil::Join(filter_entries, " " + op + " ") + ")";
-}
 
 static string TransformBlob(const string &val) {
 	char const HEX_DIGITS[] = "0123456789ABCDEF";
@@ -50,7 +37,7 @@ static string TransformLiteral(const Value &val) {
 	}
 }
 
-static string TransformComparision(ExpressionType type) {
+static string TransformComparison(ExpressionType type) {
 	switch (type) {
 	case ExpressionType::COMPARE_EQUAL:
 		return "=";
@@ -65,63 +52,116 @@ static string TransformComparision(ExpressionType type) {
 	case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
 		return ">=";
 	default:
-		throw NotImplementedException("Unsupported expression type");
+		return string();
 	}
 }
 
-static string TransformFilter(const string &column_name, const TableFilter &filter) {
-	switch (filter.filter_type) {
-	case TableFilterType::IS_NULL:
-		return column_name + " IS NULL";
-	case TableFilterType::IS_NOT_NULL:
-		return column_name + " IS NOT NULL";
-	case TableFilterType::CONJUNCTION_AND: {
-		auto &conjunction_filter = filter.Cast<ConjunctionAndFilter>();
-		return CreateExpression(column_name, conjunction_filter.child_filters, "AND");
-	}
-	case TableFilterType::CONJUNCTION_OR: {
-		auto &conjunction_filter = filter.Cast<ConjunctionOrFilter>();
-		return CreateExpression(column_name, conjunction_filter.child_filters, "OR");
-	}
-	case TableFilterType::CONSTANT_COMPARISON: {
-		auto &constant_filter = filter.Cast<ConstantFilter>();
-		auto constant_string = TransformLiteral(constant_filter.constant);
-		auto operator_string = TransformComparision(constant_filter.comparison_type);
-		return StringUtil::Format("%s %s %s", column_name, operator_string, constant_string);
-	}
-	case TableFilterType::STRUCT_EXTRACT: {
-		throw NotImplementedException("Struct extract filter is not supported in Teradata");
-	}
-	case TableFilterType::OPTIONAL_FILTER: {
-		auto &optional_filter = filter.Cast<OptionalFilter>();
-		return TransformFilter(column_name, *optional_filter.child_filter);
-	}
-	case TableFilterType::IN_FILTER: {
-		auto &in_filter = filter.Cast<InFilter>();
-		string in_list;
-		for (auto &val : in_filter.values) {
-			if (!in_list.empty()) {
-				in_list += ", ";
+// Filters produced by DuckDB itself (join-derived or optional) that are never needed for correctness.
+// Returns true if the filter can be skipped entirely.
+static bool IsSkippableInternalFilter(const BoundFunctionExpression &func) {
+	const auto &name = func.Function().GetName();
+	return name == DynamicFilterScalarFun::NAME || name == BloomFilterScalarFun::NAME ||
+	       name == PrefixRangeScalarFun::NAME;
+}
+
+// Translate a pushed-down filter expression into Teradata SQL.
+// An empty result means the (sub)expression is always satisfied and can be dropped (e.g. an optional filter).
+// Expressions that cannot be translated throw, so that no filter is ever silently ignored.
+static string TransformExpression(const string &column_name, const Expression &expr) {
+	switch (expr.GetExpressionClass()) {
+	case ExpressionClass::BOUND_REF:
+	case ExpressionClass::BOUND_COLUMN_REF:
+		return column_name;
+	case ExpressionClass::BOUND_CONSTANT:
+		return TransformLiteral(expr.Cast<BoundConstantExpression>().GetValue());
+	case ExpressionClass::BOUND_CONJUNCTION: {
+		auto &conj = expr.Cast<BoundConjunctionExpression>();
+		const auto is_and = conj.GetExpressionType() == ExpressionType::CONJUNCTION_AND;
+		vector<string> entries;
+		for (auto &child : conj.GetChildren()) {
+			auto child_str = TransformExpression(column_name, *child);
+			if (child_str.empty()) {
+				if (!is_and) {
+					// "x OR TRUE" is always TRUE
+					return string();
+				}
+				continue;
 			}
-			in_list += TransformLiteral(val);
+			entries.push_back(std::move(child_str));
 		}
-		return column_name + " IN (" + in_list + ")";
+		if (entries.empty()) {
+			return string();
+		}
+		return "(" + StringUtil::Join(entries, is_and ? " AND " : " OR ") + ")";
 	}
-	case TableFilterType::DYNAMIC_FILTER:
-		return string();
+	case ExpressionClass::BOUND_OPERATOR: {
+		auto &op = expr.Cast<BoundOperatorExpression>();
+		auto &children = op.GetChildren();
+		switch (op.GetExpressionType()) {
+		case ExpressionType::OPERATOR_IS_NULL:
+			return TransformExpression(column_name, *children[0]) + " IS NULL";
+		case ExpressionType::OPERATOR_IS_NOT_NULL:
+			return TransformExpression(column_name, *children[0]) + " IS NOT NULL";
+		case ExpressionType::COMPARE_IN:
+		case ExpressionType::COMPARE_NOT_IN: {
+			string in_list;
+			for (idx_t i = 1; i < children.size(); i++) {
+				if (i > 1) {
+					in_list += ", ";
+				}
+				in_list += TransformExpression(column_name, *children[i]);
+			}
+			const auto in_op = op.GetExpressionType() == ExpressionType::COMPARE_IN ? " IN (" : " NOT IN (";
+			return TransformExpression(column_name, *children[0]) + in_op + in_list + ")";
+		}
+		default:
+			break;
+		}
+		break;
+	}
+	case ExpressionClass::BOUND_FUNCTION: {
+		auto &func = expr.Cast<BoundFunctionExpression>();
+		if (ExpressionFilter::IsRootOptionalExpression(func)) {
+			// Optional filters are not required for correctness - push down the child if we can
+			auto child = ExpressionFilter::GetOptionalFilterChild(func);
+			if (!child) {
+				return string();
+			}
+			try {
+				return TransformExpression(column_name, *child);
+			} catch (NotImplementedException &) {
+				return string();
+			}
+		}
+		if (IsSkippableInternalFilter(func)) {
+			return string();
+		}
+		const auto op_str = TransformComparison(func.GetExpressionType());
+		if (!op_str.empty()) {
+			auto left = TransformExpression(column_name, BoundComparisonExpression::Left(func));
+			auto right = TransformExpression(column_name, BoundComparisonExpression::Right(func));
+			return StringUtil::Format("%s %s %s", left, op_str, right);
+		}
+		break;
+	}
 	default:
-		throw InternalException("Unsupported table filter type");
+		break;
 	}
+	throw NotImplementedException("Unsupported filter in Teradata scan: %s", expr.ToString());
 }
 
 string TeradataFilter::Transform(const vector<column_t> &column_ids, optional_ptr<TableFilterSet> filters,
                                  const vector<string> &names) {
+	if (filters->HasMultiColumnFilters()) {
+		throw NotImplementedException("Multi-column filters are not supported in Teradata scans");
+	}
 
 	string result;
-	for (auto &entry : filters->filters) {
-		auto col_name = KeywordHelper::WriteQuoted(names[column_ids[entry.first]], '"');
-		auto &filter = entry.second;
-		auto filter_text = TransformFilter(col_name, *filter);
+	for (const auto &entry : *filters) {
+		const idx_t column_index = entry.GetIndex();
+		auto col_name = KeywordHelper::WriteQuoted(names[column_ids[column_index]], '"');
+		auto &expr_filter = ExpressionFilter::GetExpressionFilter(entry.Filter(), "TeradataFilter::Transform");
+		auto filter_text = TransformExpression(col_name, *expr_filter.expr);
 		if (filter_text.empty()) {
 			continue;
 		}

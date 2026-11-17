@@ -11,6 +11,10 @@
 #include <dbcarea.h>
 #include <parcel.h>
 
+// dbcarea.h defines these as macros, which clash with duckdb::TriggerEventType enumerators
+#undef INSERT_EVENT
+#undef DELETE_EVENT
+
 #define CONNECTED     0
 #define NOT_CONNECTED 1
 #define OK            0

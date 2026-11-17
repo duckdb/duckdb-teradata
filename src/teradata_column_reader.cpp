@@ -15,7 +15,7 @@ public:
 			FlatVector::SetNull(vec, row_idx, true);
 		} else {
 			const auto src_ptr = reader.ReadBytes(length);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddString(vec, src_ptr, length);
 		}
 	}
@@ -36,7 +36,7 @@ public:
 			reader.Skip(max_size);
 		} else {
 			const auto src_ptr = reader.ReadBytes(max_size);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddString(vec, src_ptr, max_size);
 		}
 	}
@@ -62,7 +62,7 @@ public:
 			const auto months = (td_date % 10000) / 100;
 			const auto days = td_date % 100;
 
-			FlatVector::GetData<date_t>(vec)[row_idx] = Date::FromDate(years, months, days);
+			FlatVector::GetDataMutable<date_t>(vec)[row_idx] = Date::FromDate(years, months, days);
 		}
 	}
 };
@@ -80,7 +80,7 @@ public:
 			reader.Skip(max_size);
 		} else {
 			const auto src_ptr = reader.ReadBytes(max_size);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddStringOrBlob(vec, src_ptr, max_size);
 		}
 	}
@@ -99,7 +99,7 @@ public:
 			FlatVector::SetNull(vec, row_idx, true);
 		} else {
 			const auto src_ptr = reader.ReadBytes(length);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddStringOrBlob(vec, src_ptr, length);
 		}
 	}
@@ -114,7 +114,7 @@ public:
 			reader.Skip(sizeof(SRC));
 		} else {
 			const auto src = reader.Read<SRC>();
-			const auto dst = FlatVector::GetData<DST>(vec);
+			const auto dst = FlatVector::GetDataMutable<DST>(vec);
 			dst[row_idx] = src;
 		}
 	}
@@ -147,7 +147,7 @@ public:
 			interval_t interval = {};
 			interval.months = years * Interval::MONTHS_PER_YEAR;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -180,7 +180,7 @@ public:
 			interval_t interval = {};
 			interval.months = years * Interval::MONTHS_PER_YEAR + months;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -212,7 +212,7 @@ public:
 			interval_t interval = {};
 			interval.months = months;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -243,7 +243,7 @@ public:
 			interval_t interval = {};
 			interval.days = days;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -276,7 +276,7 @@ public:
 			const auto micros = hours * Interval::MICROS_PER_HOUR + days * Interval::MICROS_PER_DAY;
 			const auto interval = Interval::FromMicro(micros);
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -310,7 +310,7 @@ public:
 			                    minutes * Interval::MICROS_PER_MINUTE;
 			const auto interval = Interval::FromMicro(micros);
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -365,7 +365,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -395,7 +395,7 @@ public:
 			interval_t interval = {};
 			interval.micros = hours * Interval::MICROS_PER_HOUR;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -426,7 +426,7 @@ public:
 			interval_t interval = {};
 			interval.micros = hours * Interval::MICROS_PER_HOUR + minutes * Interval::MICROS_PER_MINUTE;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -480,7 +480,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -508,7 +508,7 @@ public:
 			interval_t interval = {};
 			interval.micros = minutes * Interval::MICROS_PER_MINUTE;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -560,7 +560,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -610,7 +610,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}

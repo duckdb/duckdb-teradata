@@ -10,6 +10,7 @@
 #include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 #include "duckdb/planner/operator/logical_insert.hpp"
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
+#include "duckdb/execution/physical_plan_generator.hpp"
 
 #include <teradata_column_writer.hpp>
 #include <duckdb/planner/operator/logical_create_table.hpp>
@@ -89,7 +90,7 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 		}
 
 		auto &col = columns.GetColumn(column_indices[i]);
-		result += KeywordHelper::WriteQuoted(col.GetName(), '"');
+		result += KeywordHelper::WriteQuoted(col.GetName().GetIdentifierName(), '"');
 		result += " ";
 
 		// Convert to teradata type first
@@ -101,9 +102,9 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 	result += "INSERT INTO ";
 
 	if (!entry.schema.name.empty()) {
-		result += KeywordHelper::WriteQuoted(entry.schema.name, '"') + ".";
+		result += KeywordHelper::WriteQuoted(entry.schema.name.GetIdentifierName(), '"') + ".";
 	}
-	result += KeywordHelper::WriteQuoted(entry.name, '"');
+	result += KeywordHelper::WriteQuoted(entry.name.GetIdentifierName(), '"');
 
 	result += " VALUES (";
 
@@ -112,7 +113,7 @@ static string GetInsertSQL(const TeradataInsert &insert, const TeradataTableEntr
 			result += ", ";
 		}
 		auto &col = columns.GetColumn(column_indices[i]);
-		result += ":" + KeywordHelper::WriteQuoted(col.GetName(), '"');
+		result += ":" + KeywordHelper::WriteQuoted(col.GetName().GetIdentifierName(), '"');
 	}
 	result += ");";
 	return result;
@@ -200,7 +201,7 @@ string TeradataInsert::GetName() const {
 
 InsertionOrderPreservingMap<string> TeradataInsert::ParamsToString() const {
 	InsertionOrderPreservingMap<string> result;
-	result["Table Name"] = table ? table->name : info->Base().table;
+	result["Table Name"] = (table ? table->name : info->Base().GetTableName()).GetIdentifierName();
 	return result;
 }
 
@@ -211,7 +212,7 @@ InsertionOrderPreservingMap<string> TeradataInsert::ParamsToString() const {
 static void MaterializeTeradataScans(PhysicalOperator &op) {
 	if (op.type == PhysicalOperatorType::TABLE_SCAN) {
 		auto &table_scan = op.Cast<PhysicalTableScan>();
-		if (TeradataCatalog::IsTeradataScan(table_scan.function.name)) {
+		if (TeradataCatalog::IsTeradataScan(table_scan.function.GetName().GetIdentifierName())) {
 			auto &bind_data = table_scan.bind_data->Cast<TeradataBindData>();
 
 			// If we are inserting into Teradata, materialize the all td-scans in this part of the plan

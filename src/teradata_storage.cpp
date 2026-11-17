@@ -4,6 +4,7 @@
 #include "teradata_transcation_manager.hpp"
 
 #include "duckdb/main/secret/secret_manager.hpp"
+#include "duckdb/parser/parsed_data/attach_info.hpp"
 
 namespace duckdb {
 

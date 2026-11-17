@@ -1,6 +1,10 @@
 #pragma once
 
 #include "duckdb/execution/physical_operator.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/planner/logical_operator.hpp"
+#include "duckdb/planner/parsed_data/bound_create_table_info.hpp"
 #include "duckdb/common/index_vector.hpp"
 
 namespace duckdb {

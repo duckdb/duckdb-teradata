@@ -17,7 +17,7 @@ namespace duckdb {
 // Bind
 //----------------------------------------------------------------------------------------------------------------------
 static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableFunctionBindInput &input,
-                                                  vector<LogicalType> &return_types, vector<string> &names) {
+                                                  vector<LogicalType> &return_types, vector<Identifier> &names) {
 
 	if (input.inputs[0].IsNull() || input.inputs[1].IsNull()) {
 		throw BinderException("Parameters to teradata_query cannot be NULL");
@@ -27,7 +27,7 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 
 	// Look up the database to query
 	auto &db_manager = DatabaseManager::Get(context);
-	auto db = db_manager.GetDatabase(context, db_name);
+	auto db = db_manager.GetDatabase(context, Identifier(db_name));
 	if (!db) {
 		throw BinderException("Failed to find attached database \"%s\" referenced in teradata_query", db_name);
 	}
@@ -51,7 +51,11 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 	auto &con = transaction.GetConnection();
 
 	vector<TeradataType> td_types;
-	con.Prepare(sql, td_types, names);
+	vector<string> column_names;
+	con.Prepare(sql, td_types, column_names);
+	for (auto &column_name : column_names) {
+		names.emplace_back(column_name);
+	}
 
 	// Convert to DuckDB types
 	for (auto &td_type : td_types) {
@@ -67,7 +71,7 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 	auto result = make_uniq<TeradataBindData>();
 	result->types = return_types;
 	result->td_types = std::move(td_types);
-	result->names = names;
+	result->names = std::move(column_names);
 	result->sql = sql;
 	result->SetCatalog(td_catalog);
 
@@ -77,11 +81,16 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 //----------------------------------------------------------------------------------------------------------------------
 // Bind Info
 //----------------------------------------------------------------------------------------------------------------------
-static BindInfo TeradataQueryBindInfo(const optional_ptr<FunctionData> bind_data_p) {
+static BindInfo TeradataQueryBindInfo(TableFunctionGetBindInfoInput &input) {
+	return BindInfo(ScanType::EXTERNAL);
+}
+
+static optional_ptr<TableCatalogEntry> TeradataQueryGetTableEntry(optional_ptr<const FunctionData> bind_data_p) {
+	if (!bind_data_p) {
+		return nullptr;
+	}
 	auto &bind_data = bind_data_p->Cast<TeradataBindData>();
-	BindInfo info(ScanType::EXTERNAL);
-	info.table = bind_data.GetTable().get();
-	return info;
+	return bind_data.GetTable().get();
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -208,14 +217,10 @@ static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, 
 // Register
 //----------------------------------------------------------------------------------------------------------------------
 TableFunction TeradataQueryFunction::GetFunction() {
-	TableFunction function;
-	function.name = "teradata_query";
-	function.arguments = {LogicalType::VARCHAR, LogicalType::VARCHAR};
-
-	function.bind = TeradataQueryBind;
-	function.init_global = TeradataQueryInit;
-	function.function = TeradataQueryExec;
+	TableFunction function("teradata_query", {LogicalType::VARCHAR, LogicalType::VARCHAR}, TeradataQueryExec,
+	                       TeradataQueryBind, TeradataQueryInit);
 	function.get_bind_info = TeradataQueryBindInfo;
+	function.get_table_entry = TeradataQueryGetTableEntry;
 	function.projection_pushdown = true;
 	function.filter_pushdown = true;
 

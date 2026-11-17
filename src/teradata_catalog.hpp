@@ -1,4 +1,9 @@
 #pragma once
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/planner/operator/logical_insert.hpp"
+#include "duckdb/planner/operator/logical_create_table.hpp"
+#include "duckdb/planner/operator/logical_delete.hpp"
+#include "duckdb/planner/operator/logical_update.hpp"
 #include "teradata_storage.hpp"
 #include "teradata_connection.hpp"
 #include "teradata_schema_set.hpp"
@@ -7,7 +12,8 @@ namespace duckdb {
 
 class TeradataCatalog final : public Catalog {
 public:
-	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &databse_to_load, idx_t buffer_size);
+	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &databse_to_load,
+	                         idx_t buffer_size);
 	~TeradataCatalog() override;
 
 public:

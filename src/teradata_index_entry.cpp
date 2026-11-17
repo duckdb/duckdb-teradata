@@ -8,12 +8,12 @@ TeradataIndexEntry::TeradataIndexEntry(Catalog &catalog, SchemaCatalogEntry &sch
     : IndexCatalogEntry(catalog, schema, info), table_name(std::move(table_name)) {
 }
 
-string TeradataIndexEntry::GetSchemaName() const {
+Identifier TeradataIndexEntry::GetSchemaName() const {
 	return schema.name;
 }
 
-string TeradataIndexEntry::GetTableName() const {
-	return table_name;
+Identifier TeradataIndexEntry::GetTableName() const {
+	return Identifier(table_name);
 }
 
 } // namespace duckdb

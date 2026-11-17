@@ -3,6 +3,8 @@
 #include "teradata_transaction.hpp"
 
 #include "duckdb/function/function.hpp"
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
 
 namespace duckdb {
@@ -21,14 +23,14 @@ struct TeradataExecuteBindData final : public TableFunctionData {
 };
 
 static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-                                     vector<LogicalType> &return_types, vector<string> &names) {
+                                     vector<LogicalType> &return_types, vector<Identifier> &names) {
 	return_types.emplace_back(LogicalType::BOOLEAN);
 	names.emplace_back("Success");
 
 	// look up the database to query
 	auto db_name = input.inputs[0].GetValue<string>();
 	auto &db_manager = DatabaseManager::Get(context);
-	auto db = db_manager.GetDatabase(context, db_name);
+	auto db = db_manager.GetDatabase(context, Identifier(db_name));
 	if (!db) {
 		throw BinderException("Failed to find attached database \"%s\" referenced in teradata_execute", db_name);
 	}

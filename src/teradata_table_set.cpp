@@ -17,7 +17,8 @@ static string GetDuckDBToTeradataTypeString(const LogicalType &type) {
 	return TeradataType::FromDuckDB(type).ToString();
 }
 
-static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints, bool use_primary_index) {
+static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<unique_ptr<Constraint>> &constraints,
+                                       bool use_primary_index) {
 	std::stringstream ss;
 
 	ss << "(";
@@ -35,7 +36,6 @@ static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<u
 			not_null_columns.insert(not_null.index);
 		} else if (constraint->type == ConstraintType::UNIQUE) {
 			auto &pk = constraint->Cast<UniqueConstraint>();
-			vector<string> constraint_columns = pk.columns;
 			if (pk.index.index != DConstants::INVALID_INDEX) {
 				// no columns specified: single column constraint
 				if (pk.is_primary_key) {
@@ -49,7 +49,7 @@ static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<u
 				if (pk.is_primary_key) {
 					// multi key pk column: insert set of columns into multi_key_pks
 					for (auto &col : pk.columns) {
-						multi_key_pks.insert(col);
+						multi_key_pks.insert(col.GetIdentifierName());
 					}
 				}
 				extra_constraints.push_back(constraint->ToString());
@@ -69,11 +69,11 @@ static string GetTeradataColumnsDefSQL(const ColumnList &columns, const vector<u
 		if (column.Oid() > 0) {
 			ss << ", ";
 		}
-		ss << KeywordHelper::WriteQuoted(column.Name(), '"') << " ";
+		ss << KeywordHelper::WriteQuoted(column.Name().GetIdentifierName(), '"') << " ";
 		ss << GetDuckDBToTeradataTypeString(column.Type());
 		bool not_null = not_null_columns.find(column.Logical()) != not_null_columns.end();
 		bool is_single_key_pk = pk_columns.find(column.Logical()) != pk_columns.end();
-		bool is_multi_key_pk = multi_key_pks.find(column.Name()) != multi_key_pks.end();
+		bool is_multi_key_pk = multi_key_pks.find(column.Name().GetIdentifierName()) != multi_key_pks.end();
 		bool is_unique = unique_columns.find(column.Logical()) != unique_columns.end();
 		if (not_null && !is_single_key_pk && !is_multi_key_pk) {
 			// NOT NULL but not a primary key column
@@ -116,11 +116,12 @@ static string GetTeradataCreateTableSQL(const CreateTableInfo &info, bool use_pr
 	if (info.on_conflict == OnCreateConflict::IGNORE_ON_CONFLICT) {
 		ss << "IF NOT EXISTS ";
 	}
-	if (!info.schema.empty()) {
-		ss << KeywordHelper::WriteQuoted(info.schema, '"');
+	const auto &schema_name = info.GetQualifiedName().Schema();
+	if (!schema_name.empty()) {
+		ss << KeywordHelper::WriteQuoted(schema_name.GetIdentifierName(), '"');
 		ss << ".";
 	}
-	ss << KeywordHelper::WriteQuoted(info.table, '"');
+	ss << KeywordHelper::WriteQuoted(info.GetTableName().GetIdentifierName(), '"');
 	ss << GetTeradataColumnsDefSQL(info.columns, info.constraints, use_primary_index);
 	ss << ";";
 
@@ -129,7 +130,6 @@ static string GetTeradataCreateTableSQL(const CreateTableInfo &info, bool use_pr
 
 optional_ptr<CatalogEntry> TeradataTableSet::CreateTable(ClientContext &context, BoundCreateTableInfo &info) {
 	auto &transaction = TeradataTransaction::Get(context, catalog);
-
 
 	Value use_primary_index_value;
 	bool use_primary_index = true;
@@ -167,12 +167,13 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	                                      "ON T.TableName = C.TableName AND T.DatabaseName = C.DatabaseName "
 	                                      "WHERE T.DatabaseName = '%s' AND (T.TableKind = 'T' OR T.TableKind = 'O') "
 	                                      "ORDER BY T.TableName, C.ColumnId",
-	                                      schema.name);
+	                                      schema.name.GetIdentifierName());
 
 	const auto result = conn.Query(query, false);
 
 	TeradataTableInfo info;
-	info.schema = schema.name;
+	info.SetSchema(schema.name);
+	string current_table;
 
 	bool skip_table = false;
 
@@ -191,18 +192,18 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 			const auto col_type = FlatVector::GetData<string_t>(col_type_vec)[row_idx];
 			const auto col_size = FlatVector::GetData<int32_t>(col_size_vec)[row_idx];
 
-			if (tbl_name != info.table) {
+			if (tbl_name != current_table) {
 				// We have a new table
-				if (!info.table.empty() && !skip_table) {
+				if (!current_table.empty() && !skip_table) {
 					// Finish the previous table
-					entries[info.table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
+					entries[current_table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
 				}
 				skip_table = false;
 
 				// Reset the info
+				current_table = tbl_name.GetString();
 				info = TeradataTableInfo();
-				info.table = tbl_name.GetString();
-				info.schema = schema.name;
+				info.SetQualifiedName(QualifiedName(Identifier(), schema.name, Identifier(current_table)));
 			}
 
 			// Add the columns
@@ -213,7 +214,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 				}
 
 				const auto duck_type = td_type.ToDuckDB();
-				info.columns.AddColumn(ColumnDefinition(col_name.GetString(), duck_type));
+				info.columns.AddColumn(ColumnDefinition(Identifier(col_name.GetString()), duck_type));
 				info.teradata_types.push_back(td_type);
 			} catch (...) {
 				// Ignore the column type (and this table) for now, just make this work
@@ -222,9 +223,9 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 		}
 	}
 
-	if (!info.table.empty() && !skip_table) {
+	if (!current_table.empty() && !skip_table) {
 		// Finish the last table
-		entries[info.table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
+		entries[current_table] = make_uniq<TeradataTableEntry>(catalog, schema, info);
 	}
 }
 
