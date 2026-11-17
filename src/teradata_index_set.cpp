@@ -56,7 +56,7 @@ optional_ptr<CatalogEntry> TeradataIndexSet::CreateIndex(ClientContext &context,
 	auto &td_connection = td_transcation.GetConnection();
 
 	const auto sql = GetCreateIndexSQL(info, table);
-	td_connection.Execute(sql);
+	td_connection.Execute(sql, context);
 
 	auto index_entry =
 	    make_uniq<TeradataIndexEntry>(schema.ParentCatalog(), schema, info, table.name.GetIdentifierName());
@@ -74,7 +74,7 @@ void TeradataIndexSet::LoadEntries(ClientContext &context) {
 	                                      "ORDER BY T.TableName, I.IndexName, I.IndexType, I.ColumnName, I.UniqueFlag;",
 	                                      schema.name);
 
-	const auto result = conn.Query(query, false);
+	const auto result = conn.Query(query, false, context);
 
 	for (auto &chunk : result->Chunks()) {
 		chunk.Flatten();

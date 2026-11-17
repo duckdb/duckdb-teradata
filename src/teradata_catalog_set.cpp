@@ -68,7 +68,7 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 	const auto &transaction = TeradataTransaction::Get(context, catalog);
 	auto &conn = transaction.GetConnection();
 
-	conn.Execute(drop_query);
+	conn.Execute(drop_query, context);
 
 	// erase the entry from the catalog set
 	lock_guard<mutex> l(entry_lock);

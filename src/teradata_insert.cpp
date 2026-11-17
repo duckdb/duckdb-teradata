@@ -163,7 +163,7 @@ SinkResultType TeradataInsert::Sink(ExecutionContext &context, DataChunk &chunk,
 	state.arena.Reset();
 
 	// Execute, passing the data chunk as parameters.
-	conn.Execute(state.insert_sql, chunk, state.arena, state.writers);
+	conn.Execute(state.insert_sql, chunk, state.arena, state.writers, context.client);
 	state.insert_count += chunk.size();
 
 	return SinkResultType::NEED_MORE_INPUT;

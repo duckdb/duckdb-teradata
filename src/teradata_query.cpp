@@ -52,7 +52,7 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 
 	vector<TeradataType> td_types;
 	vector<string> column_names;
-	con.Prepare(sql, td_types, column_names);
+	con.Prepare(sql, td_types, column_names, context);
 	for (auto &column_name : column_names) {
 		names.emplace_back(column_name);
 	}
@@ -128,7 +128,7 @@ static unique_ptr<GlobalTableFunctionState> TeradataQueryInit(ClientContext &con
 	result->column_ids = input.column_ids;
 
 	auto &con = data.GetCatalog()->GetConnection();
-	result->td_query = con.Query(sql, data.is_materialized);
+	result->td_query = con.Query(sql, data.is_materialized, context);
 
 	// Check that the types are still the same, in case we need to rebind
 	auto &td_types = result->td_query->GetTypes();

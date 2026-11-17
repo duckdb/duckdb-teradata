@@ -25,7 +25,7 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	string query = "SELECT DatabaseName, CommentString FROM DBC.DatabasesV";
 	query += " WHERE DatabaseName = " + KeywordHelper::WriteQuoted(schema_to_load);
 
-	const auto result = conn.Query(query, false);
+	const auto result = conn.Query(query, false, context);
 
 	// Now iterate over the result and create the schema entries
 	for (auto &chunk : result->Chunks()) {

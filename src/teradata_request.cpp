@@ -5,15 +5,21 @@
 
 #include "util/binary_reader.hpp"
 
+#include "duckdb/main/client_context.hpp"
+
+#include <chrono>
+#include <thread>
+
 namespace duckdb {
 
-TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con) {
+TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con, optional_ptr<ClientContext> context_p)
+    : context(context_p) {
 	Init(con);
 }
 
 void TeradataRequestContext::Init(const TeradataConnection &con) {
 	memset(&dbc, 0, sizeof(DBCAREA)); // Clear the DBCAREA structure
-	memset(&cnta, 0, sizeof(cnta)); // Clear the control area
+	memset(&cnta, 0, sizeof(cnta));   // Clear the control area
 
 	// Initialize
 	int32_t result = EM_OK;
@@ -41,7 +47,8 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 
 	dbc.use_presence_bits = 'Y';
 
-	dbc.wait_for_resp = 'Y';
+	// With a client context we poll for responses (EM_NODATA) so that the request can be interrupted
+	dbc.wait_for_resp = context ? 'N' : 'Y';
 	dbc.wait_across_crash = 'N';
 	dbc.tell_about_crash = 'Y';
 
@@ -469,20 +476,26 @@ uint16_t TeradataRequestContext::FetchParcel() {
 	dbc.fet_data_ptr = buffer.data();
 	dbc.fet_max_data_len = static_cast<int32_t>(buffer.size());
 
+	static constexpr int64_t MAX_POLL_INTERVAL_MS = 50;
+	int64_t poll_interval_ms = 1;
+
 	int32_t result = EM_OK;
-	DBCHCL(&result, cnta, &dbc);
-
-	while (result == BUFOVFLOW) {
-		buffer.resize(dbc.fet_ret_data_len);
-		dbc.fet_data_ptr = buffer.data();
-		dbc.fet_max_data_len = buffer.size();
+	while (true) {
 		DBCHCL(&result, cnta, &dbc);
-	}
-
-	while (result == EM_NODATA) {
-		// No data, try again
-		// TODO: Yield the DuckDB task here, dont just busy loop
-		DBCHCL(&result, cnta, &dbc);
+		if (result == BUFOVFLOW) {
+			buffer.resize(dbc.fet_ret_data_len);
+			dbc.fet_data_ptr = buffer.data();
+			dbc.fet_max_data_len = buffer.size();
+			continue;
+		}
+		if (result == EM_NODATA) {
+			// The response is not ready yet (non-blocking mode): check for interrupts, back off and poll again
+			CheckInterrupt();
+			std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_ms));
+			poll_interval_ms = MinValue<int64_t>(poll_interval_ms * 2, MAX_POLL_INTERVAL_MS);
+			continue;
+		}
+		break;
 	}
 
 	if (result != EM_OK) {
@@ -517,6 +530,8 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<unique_ptr<Ter
 		chunk.SetCardinality(0);
 		return false;
 	}
+
+	CheckInterrupt();
 
 	idx_t row_idx = 0;
 
@@ -653,6 +668,34 @@ void TeradataRequestContext::Close() {
 		throw IOException("Failed to close Teradata request");
 	}
 	is_open = false;
+}
+
+void TeradataRequestContext::Abort() {
+	if (!is_open) {
+		return;
+	}
+	is_open = false;
+
+	// Errors are ignored: we are already unwinding because of the interrupt
+	int32_t result = EM_OK;
+	dbc.func = DBFABT;
+	DBCHCL(&result, cnta, &dbc);
+
+	result = EM_OK;
+	dbc.func = DBFERQ;
+	DBCHCL(&result, cnta, &dbc);
+}
+
+void TeradataRequestContext::CheckInterrupt() {
+	if (!context) {
+		return;
+	}
+	try {
+		context->BlockingInterruptCheck();
+	} catch (...) {
+		Abort();
+		throw;
+	}
 }
 
 TeradataRequestContext::~TeradataRequestContext() {

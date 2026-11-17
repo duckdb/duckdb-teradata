@@ -141,7 +141,7 @@ optional_ptr<CatalogEntry> TeradataTableSet::CreateTable(ClientContext &context,
 	const auto create_sql = GetTeradataCreateTableSQL(base, use_primary_index);
 
 	// Execute the sql statement
-	transaction.GetConnection().Execute(create_sql);
+	transaction.GetConnection().Execute(create_sql, context);
 
 	auto tbl_entry = make_uniq<TeradataTableEntry>(catalog, schema, base);
 	return CreateEntry(std::move(tbl_entry));
@@ -169,7 +169,7 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 	                                      "ORDER BY T.TableName, C.ColumnId",
 	                                      schema.name.GetIdentifierName());
 
-	const auto result = conn.Query(query, false);
+	const auto result = conn.Query(query, false, context);
 
 	TeradataTableInfo info;
 	info.SetSchema(schema.name);

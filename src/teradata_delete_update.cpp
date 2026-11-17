@@ -46,7 +46,7 @@ SinkFinalizeType TeradataDeleteUpdate::Finalize(Pipeline &pipeline, Event &event
 	// TODO:
 	// We cant get affected rows from the DELETE statement, we need to inspect the query log.
 	// So for now, always return 0 affected rows.
-	connection.Execute(query);
+	connection.Execute(query, context);
 
 	gstate.affected_rows = 0; // result->AffectedRows();
 	return SinkFinalizeType::READY;
