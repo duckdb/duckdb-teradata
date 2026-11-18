@@ -14,9 +14,13 @@ This is a DuckDB extension for connecting to and "attach":ing Teradata databases
   * [Querying data](#querying-data)
     * [Sending raw SQL queries to Teradata](#sending-raw-sql-queries-to-teradata)
     * [Executing raw SQL commands](#executing-raw-sql-commands)
+    * [Session settings and query bands](#session-settings-and-query-bands)
+    * [Cancelling queries](#cancelling-queries)
   * [Type mapping](#type-mapping)
   * [Configuration Options](#configuration-options)
+* [Compatibility](#compatibility)
 * [Building the Extension](#building-the-extension)
+* [Running tests](#running-tests)
 <!-- TOC -->
 
 # Usage
@@ -186,6 +190,30 @@ using the DuckDB `CREATE TABLE` statement:
 FROM teradata_execute('td', 'CREATE TABLE my_table (id INT, "value" INT)');
 ```
 
+### Session settings and query bands
+
+`teradata_execute` and `teradata_query` run on the same Teradata session, so session-level settings made with
+`teradata_execute` apply to the queries that follow, for as long as the database stays attached. For example, to tag
+all following requests with a [query band](https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Syntax-and-Examples/Query-Band-Statements):
+
+```sql
+FROM teradata_execute('td', 'SET QUERY_BAND = ''APP=my_notebook;'' UPDATE FOR SESSION;');
+FROM teradata_query('td', 'SELECT GetQueryBand()');
+-- =S> APP=my_notebook;
+```
+
+### Cancelling queries
+
+A running Teradata request is cancelled when the DuckDB query is interrupted (e.g. Ctrl-C in the DuckDB CLI) or
+exceeds DuckDB's `max_execution_time` (DuckDB 2.0). The extension then aborts the request on the Teradata system, rolls
+back the transaction, and keeps the session, so the attached database stays usable:
+
+```sql
+SET max_execution_time = 60000; -- milliseconds
+FROM teradata_query('td', 'SELECT ...long running query...');
+-- INTERRUPT Error: Query exceeded maximum execution time
+```
+
 ## Type mapping
 
 The DuckDB Teradata extension attempts to automatically map Teradata data types to DuckDB data types as closely as possible when
@@ -251,20 +279,33 @@ This option controls whether DuckDB should automatically add a [primary index](h
 This defaults to `true`, to follow the standard behavior in Teradata, but can be set to false if you want to create
 Teradata tables from within DuckDB where the first column can contain duplicates.
 
+# Compatibility
+
+| Branch | DuckDB | C++ standard |
+|---|---|---|
+| `main` | v2.0.0 | C++17 |
+| `v1.5-variegata` | v1.5.6 | C++11 (as DuckDB 1.5) |
+
+The extension requires Teradata Tools and Utilities (CLIv2) 20.00, or a compatible version, to be installed separately;
+it does not include any Teradata software. See [Running tests](#running-tests) for the unit tests, which run without a
+Teradata system, and the SQL tests, which run against one.
+
 # Building the Extension
 
 The DuckDB Teradata extension is based on the [DuckDB Extension Template](https://github.com/duckdb/extension-template), but does not use `vcpkg` for dependency management.
 
 To build the extension, you will need to have the following dependencies installed:
-- A C++ compiler that supports C++11 or later.
+- A C++ compiler that supports C++17 (C++11 for the `v1.5-variegata` branch).
 - CMake 3.10 or later.
 - Make or Ninja build system.
 
-Additionally, you will need the Teradata CLIv2 Libraries installed on your system, which can be obtained from Teradata's official website. These need to be available in a location where the CMake build system can find them, e.g. by modifying the `TD_INCLUDE_DIR` and `TD_LIBRARY_DIR` variables in the `CMakeLists.txt` file to point to the correct include and library directories of the Teradata CLIv2 Libraries.
+The Teradata CLIv2 headers are included in `src/teradata`, so building needs no Teradata software. At runtime the
+extension loads the CLIv2 library (`libcliv2.dylib`, `libcliv2.so` or `wincli32.dll`) from the default Teradata Tools
+and Utilities installation directories, or from the library search path.
 
 Once you have the dependencies installed, simply running `make debug` or `make release` in the root directory of the extension will build the extension in debug or release mode, and provide the following artifacts: 
 
-- The resulting DuckDB CLI binary, `duckdb` in `build/debug/duckdb` or `build/release/duckdb`, which will have the Teradata extension statically linked built in. Can be used to quickly test the extension interactively. 
+- The resulting DuckDB CLI binary, `duckdb` in `build/debug/duckdb` or `build/release/duckdb`. With DuckDB 2.0 the extension is not linked into it; load the built extension with `duckdb -unsigned` and `LOAD 'build/release/extension/teradata/teradata.duckdb_extension';`.
 
 - The shared library of the extension itself, `teradata.duckdb_extension`, is placed in the `./build/debug/extension/teradata/` or `./build/release/extension/teradata` directory, depending on the build mode.
 
@@ -282,14 +323,14 @@ This builds the extension with `-DTERADATA_UNITTESTS=1` and runs `./build/releas
 
 ## SQL tests
 
-DuckDB provides a built-in test framework that can be used to run tests for the extension. However, the tests require a running Teradata instance to be available. Credentials to the Teradata instance needs to be provided through environment variables, that is: 
+The SQL tests in `test/sql/teradata` run against a live Teradata system, so they require a running Teradata instance to be available. Credentials to the Teradata instance needs to be provided through environment variables, that is: 
 - `TD_LOGON`: the logon string to the Teradata instance, e.g. `127.0.0.1/dbc,dbc`
 - `TD_DB`: the name of the Teradata database to use for testing, e.g. `my_db`.
 
 You can set these environment variables in your shell before running the tests:
 
 ```bash
-export TD_LOGON="127.0.0.1/dbc,dbc
+export TD_LOGON="127.0.0.1/dbc,dbc"
 export TD_DB="my_db"
 ```
 
