@@ -120,6 +120,8 @@ void TeradataIndexSet::LoadEntries(ClientContext &context) {
 
 			// TODO: We need to check if there are multiple columns in the index
 			info.expressions.push_back(make_uniq<ColumnRefExpression>(Identifier(col_name)));
+			// The index SQL is rendered from the parsed expressions
+			info.parsed_expressions.push_back(make_uniq<ColumnRefExpression>(Identifier(col_name)));
 
 			auto index_entry = make_uniq<TeradataIndexEntry>(catalog, schema, info, info.table.GetIdentifierName());
 			CreateEntry(std::move(index_entry));

@@ -48,7 +48,8 @@ string BuildScanSQL(const string &sql, const string &schema_name, const string &
 //! True if a column bound as `expected` may arrive as `actual`: Teradata transmits some temporal types as CHAR
 bool IsTransmittedAs(const TeradataType &expected, const TeradataType &actual);
 
-//! Throws if a query result no longer has the types the query was bound with
+//! Throws if a query result no longer has the types the query was bound with.
+//! An empty `actual` (a result without data) is accepted.
 void CheckBoundTypes(const vector<string> &names, const vector<TeradataType> &expected,
                      const vector<TeradataType> &actual);
 

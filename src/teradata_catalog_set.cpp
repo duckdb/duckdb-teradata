@@ -70,36 +70,32 @@ void TeradataCatalogSet::DropEntry(ClientContext &context, DropInfo &info) {
 
 	conn.Execute(drop_query, context);
 
-	// erase the entry from the catalog set
+	// Erase the entry, and its case-insensitive alias, under the name it is stored as
 	lock_guard<mutex> l(entry_lock);
-	entries.erase(entry_name);
+	const auto stored_name = FindStoredName(entry_name);
+	if (stored_name) {
+		entries.erase(*stored_name);
+		entry_map.erase(*stored_name);
+	}
+}
+
+optional<string> TeradataCatalogSet::FindStoredName(const string &name) const {
+	if (entries.find(name) != entries.end()) {
+		return name;
+	}
+	const auto alias = entry_map.find(name);
+	if (alias == entry_map.end() || entries.find(alias->second) == entries.end()) {
+		return {};
+	}
+	return alias->second;
 }
 
 optional_ptr<CatalogEntry> TeradataCatalogSet::GetEntry(ClientContext &context, const string &name) {
 	TryLoadEntries(context);
-	{
-		lock_guard<mutex> l(entry_lock);
-		auto entry = entries.find(name);
-		if (entry != entries.end()) {
-			return entry->second.get();
-		}
-	}
-
-	// entry not found
-	// TODO: Try to reload the catalog!
-	auto name_entry = entry_map.find(name);
-	if (name_entry == entry_map.end()) {
-		// no entry found
-		return nullptr;
-	}
-	// try again with the entry we found in the case insensitive map
-	auto entry = entries.find(name_entry->second);
-	if (entry == entries.end()) {
-		// still not found
-		return nullptr;
-	}
-
-	return entry->second.get();
+	lock_guard<mutex> l(entry_lock);
+	// TODO: Try to reload the catalog if the entry is not found
+	const auto stored_name = FindStoredName(name);
+	return stored_name ? entries.find(*stored_name)->second.get() : nullptr;
 }
 
 TeradataInSchemaSet::TeradataInSchemaSet(TeradataSchemaEntry &schema)

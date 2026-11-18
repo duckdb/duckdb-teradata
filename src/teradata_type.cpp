@@ -254,7 +254,7 @@ const ParcelBaseType PARCEL_BASE_TYPES[] = {
     {484, TeradataTypeId::DECIMAL, true},        {496, TeradataTypeId::INTEGER, true},
     {500, TeradataTypeId::SMALLINT, true},       {600, TeradataTypeId::BIGINT, true},
     {688, TeradataTypeId::VARBYTE, true},        {692, TeradataTypeId::BYTE, true},
-    {697, TeradataTypeId::VARBYTE, true}, // LONG VARBYTE, treated as VARBYTE
+    {696, TeradataTypeId::VARBYTE, true}, // LONG VARBYTE, treated as VARBYTE
     {748, TeradataTypeId::DATE, true},    // DATE_A (ANSI date)
     {752, TeradataTypeId::DATE, true},    // DATE_T (integer date)
     {756, TeradataTypeId::BYTEINT, true},

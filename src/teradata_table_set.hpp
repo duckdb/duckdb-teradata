@@ -16,6 +16,28 @@ struct TeradataColumnRow {
 	int32_t length;
 };
 
+//! Groups column rows, arriving ordered by table, into table definitions as they come in, so that only the current
+//! table's columns are held. Tables with an unsupported column type are skipped.
+class TeradataTableInfoBuilder {
+public:
+	explicit TeradataTableInfoBuilder(Identifier schema_name);
+
+	void Add(const TeradataColumnRow &row);
+	//! The definitions of all supported tables added so far
+	vector<unique_ptr<TeradataTableInfo>> Finish();
+
+private:
+	void StartTable(const string &table_name);
+	void FinishTable();
+
+	Identifier schema_name;
+	vector<unique_ptr<TeradataTableInfo>> completed;
+	string current_table;
+	//! The table being built; null while skipping a table with an unsupported column
+	unique_ptr<TeradataTableInfo> current;
+	bool started = false;
+};
+
 //! Group column rows, ordered by table, into table definitions. Tables with an unsupported column type are skipped.
 vector<unique_ptr<TeradataTableInfo>> BuildTableInfos(const Identifier &schema_name,
                                                       const vector<TeradataColumnRow> &rows);

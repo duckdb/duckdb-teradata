@@ -51,6 +51,8 @@ protected:
 
 private:
 	void TryLoadEntries(ClientContext &context);
+	//! The name an entry is stored under, matching `name` exactly or case-insensitively. Requires entry_lock.
+	optional<string> FindStoredName(const string &name) const;
 	mutex load_lock;
 	mutex entry_lock;
 	bool is_loaded = false;

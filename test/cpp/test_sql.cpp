@@ -126,6 +126,13 @@ TEST_CASE("A changed result schema is reported with the column name", "[query]")
 	CHECK_NOTHROW(CheckBoundTypes({"a", "b"}, bound, bound));
 	REQUIRE_THROWS_WITH(CheckBoundTypes({"a", "b"}, bound, {TeradataTypeId::INTEGER, TeradataTypeId::BIGINT}),
 	                    Catch::Contains("'b'"));
+	// A result without data describes no columns
+	CHECK_NOTHROW(CheckBoundTypes({"a", "b"}, bound, {}));
+	// Fewer or more columns than bound is a schema change too
+	REQUIRE_THROWS_WITH(CheckBoundTypes({"a", "b"}, bound, {TeradataTypeId::INTEGER}),
+	                    Catch::Contains("Expected 2 column(s) but received 1"));
+	REQUIRE_THROWS_WITH(CheckBoundTypes({"a", "b"}, bound, {bound[0], bound[1], TeradataTypeId::INTEGER}),
+	                    Catch::Contains("Expected 2 column(s) but received 3"));
 }
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <thread>
 
 namespace duckdb {
 
@@ -94,6 +95,7 @@ void FakeCLIv2::Install() {
 	rules.clear();
 	calls.clear();
 	requests.clear();
+	active.clear();
 	TeradataCLIV2::SetImplementation(&FakeCLIv2::DBCHINI, &FakeCLIv2::DBCHCL);
 }
 
@@ -110,6 +112,25 @@ vector<string> FakeCLIv2::Calls() {
 vector<FakeRequest> FakeCLIv2::Requests() {
 	std::lock_guard<std::mutex> guard(lock);
 	return requests;
+}
+
+bool FakeCLIv2::WaitForRequest(const string &sql_fragment, std::chrono::milliseconds timeout) {
+	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	while (std::chrono::steady_clock::now() < deadline) {
+		const auto received = Requests();
+		if (std::any_of(received.begin(), received.end(),
+		                [&](const FakeRequest &r) { return r.sql.find(sql_fragment) != string::npos; })) {
+			return true;
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	}
+	return false;
+}
+
+Int32 FakeCLIv2::StartRequest(FakeResponse response) {
+	const auto id = ++next_id;
+	active[id] = ActiveRequest {std::move(response), 0, std::chrono::steady_clock::now()};
+	return id;
 }
 
 Int32 FakeCLIv2::DBCHINI(Int32 *result, char *, struct DBCAREA *) {
@@ -129,10 +150,8 @@ Int32 FakeCLIv2::Call(struct DBCAREA &dbc) {
 	case DBFCON:
 		calls.emplace_back("CON");
 		dbc.o_sess_id = 1;
-		dbc.o_req_id = ++next_id;
 		// The logon response
-		current = FakeResponse {{{PclSUCCESS, ""}}, false};
-		parcel_idx = 0;
+		dbc.o_req_id = StartRequest(FakeResponse {{{PclSUCCESS, ""}}});
 		return EM_OK;
 	case DBFIRQ:
 		return InitiateRequest(dbc);
@@ -143,6 +162,7 @@ Int32 FakeCLIv2::Call(struct DBCAREA &dbc) {
 		return EM_OK;
 	case DBFERQ:
 		calls.emplace_back("ERQ");
+		active.erase(dbc.i_req_id);
 		return EM_OK;
 	case DBFDSC:
 		calls.emplace_back("DSC");
@@ -166,35 +186,36 @@ Int32 FakeCLIv2::InitiateRequest(struct DBCAREA &dbc) {
 	const auto rule = std::find_if(rules.rbegin(), rules.rend(), [&](const Rule &r) {
 		return r.mode == request.mode && request.sql.find(r.sql_fragment) != string::npos;
 	});
+	FakeResponse response;
 	if (rule != rules.rend()) {
-		current = rule->response;
+		response = rule->response;
 	} else {
 		// One statement per parameter row, as a parameterized request answers
 		const auto statements = std::max<UInt32>(dbc.using_data_count, 1);
-		current = FakeResponse();
 		for (UInt32 i = 0; i < statements; i++) {
-			current.parcels.push_back({PclSUCCESS, ""});
-			current.parcels.push_back({PclENDSTATEMENT, ""});
+			response.parcels.push_back({PclSUCCESS, ""});
+			response.parcels.push_back({PclENDSTATEMENT, ""});
 		}
-		current.parcels.push_back({PclENDREQUEST, ""});
+		response.parcels.push_back({PclENDREQUEST, ""});
 	}
-	parcel_idx = 0;
 	requests.push_back(std::move(request));
-	dbc.o_req_id = ++next_id;
+	dbc.o_req_id = StartRequest(std::move(response));
 	return EM_OK;
 }
 
 Int32 FakeCLIv2::Fetch(struct DBCAREA &dbc) {
-	if (current.never_answers) {
+	const auto request = active.find(dbc.i_req_id);
+	if (request == active.end()) {
+		return Error(dbc, "fake CLIv2: fetch for an unknown request");
+	}
+	auto &state = request->second;
+	if (std::chrono::steady_clock::now() - state.started < state.response.delay) {
 		return EM_NODATA;
 	}
-	if (parcel_idx >= current.parcels.size()) {
-		const string message = "fake CLIv2: no more parcels";
-		memcpy(dbc.msg_text, message.c_str(), message.size());
-		dbc.msg_len = static_cast<short>(message.size());
-		return NOACTIVEREQUEST;
+	if (state.parcel_idx >= state.response.parcels.size()) {
+		return Error(dbc, "fake CLIv2: no more parcels");
 	}
-	const auto &parcel = current.parcels[parcel_idx];
+	const auto &parcel = state.response.parcels[state.parcel_idx];
 	dbc.fet_ret_data_len = static_cast<Int32>(parcel.data.size());
 	if (parcel.data.size() > static_cast<idx_t>(dbc.fet_max_data_len)) {
 		// The caller grows its buffer and fetches the same parcel again
@@ -202,8 +223,15 @@ Int32 FakeCLIv2::Fetch(struct DBCAREA &dbc) {
 	}
 	memcpy(dbc.fet_data_ptr, parcel.data.data(), parcel.data.size());
 	dbc.fet_parcel_flavor = parcel.flavor;
-	parcel_idx++;
+	state.parcel_idx++;
 	return EM_OK;
+}
+
+Int32 FakeCLIv2::Error(struct DBCAREA &dbc, const string &message) {
+	const auto length = std::min<idx_t>(message.size(), sizeof(dbc.msg_text));
+	memcpy(dbc.msg_text, message.c_str(), length);
+	dbc.msg_len = static_cast<short>(length);
+	return NOACTIVEREQUEST;
 }
 
 } // namespace duckdb

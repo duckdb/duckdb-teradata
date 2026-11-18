@@ -79,15 +79,13 @@ struct TeradataFixture {
 		fake.Respond(
 		    "DBC.DatabasesV", 'E',
 		    {Parcels::Statement({Parcels::DataInfo({{NULLABLE_VARCHAR, 128, ""}, {NULLABLE_VARCHAR, 255, ""}}),
-			                     Parcels::Record({false, true}, Parcels::Varchar("user") + Parcels::Varchar(""))}),
-			 false});
+			                     Parcels::Record({false, true}, Parcels::Varchar("user") + Parcels::Varchar(""))})});
 		fake.Respond("dbc.TablesV", 'E',
 		             {Parcels::Statement({Parcels::DataInfo({{NULLABLE_VARCHAR, 128, ""},
 		                                                     {NULLABLE_VARCHAR, 128, ""},
 		                                                     {NULLABLE_CHAR, 2, ""},
 		                                                     {NULLABLE_INTEGER, 4, ""}}),
-		                                  ColumnRow("t", "id", "I ", 4), ColumnRow("t", "name", "CV", 20)}),
-		              false});
+		                                  ColumnRow("t", "id", "I ", 4), ColumnRow("t", "name", "CV", 20)})});
 	}
 
 	static FakeParcel ColumnRow(const string &table, const string &column, const string &type, int32_t length) {
@@ -168,12 +166,11 @@ TEST_CASE_METHOD(TeradataFixture, "teradata_query prepares, then reads the recor
 	Attach();
 	auto &fake = FakeCLIv2::Get();
 	const vector<FakeColumn> columns {{NULLABLE_INTEGER, 4, "id"}, {NULLABLE_VARCHAR, 20, "name"}};
-	fake.Respond("FROM people", 'P', {Parcels::Statement({Parcels::PrepInfo(columns)}), false});
+	fake.Respond("FROM people", 'P', {Parcels::Statement({Parcels::PrepInfo(columns)})});
 	fake.Respond("FROM people", 'E',
 	             {Parcels::Statement({Parcels::DataInfo(columns),
 	                                  Parcels::Record({false, false}, Parcels::Int32(1) + Parcels::Varchar("ann")),
-	                                  Parcels::Record({false, true}, Parcels::Int32(2) + Parcels::Varchar(""))}),
-	              false});
+	                                  Parcels::Record({false, true}, Parcels::Int32(2) + Parcels::Varchar(""))})});
 
 	auto result = Run("SELECT id, name FROM teradata_query('td', 'SELECT id, name FROM people;') ORDER BY id");
 	REQUIRE(result.RowCount() == 2);
@@ -191,10 +188,9 @@ TEST_CASE_METHOD(TeradataFixture, "Records larger than the parcel buffer are fet
 	const string big(20000, 'x');
 	const vector<FakeColumn> columns {{NULLABLE_VARCHAR, 30000, "doc"}};
 	auto &fake = FakeCLIv2::Get();
-	fake.Respond("FROM docs", 'P', {Parcels::Statement({Parcels::PrepInfo(columns)}), false});
-	fake.Respond(
-	    "FROM docs", 'E',
-	    {Parcels::Statement({Parcels::DataInfo(columns), Parcels::Record({false}, Parcels::Varchar(big))}), false});
+	fake.Respond("FROM docs", 'P', {Parcels::Statement({Parcels::PrepInfo(columns)})});
+	fake.Respond("FROM docs", 'E',
+	             {Parcels::Statement({Parcels::DataInfo(columns), Parcels::Record({false}, Parcels::Varchar(big))})});
 
 	auto result = Run("SELECT doc FROM teradata_query('td', 'SELECT doc FROM docs')");
 	CHECK(result.GetValue(0, 0) == Value(big));
@@ -203,8 +199,8 @@ TEST_CASE_METHOD(TeradataFixture, "Records larger than the parcel buffer are fet
 TEST_CASE_METHOD(TeradataFixture, "Teradata errors are reported with their code", "[integration]") {
 	Attach();
 	auto &fake = FakeCLIv2::Get();
-	fake.Respond("bad sql", 'E', {{{PclSUCCESS, ""}, Parcels::Failure(3706, "Syntax error")}, false});
-	fake.Respond("dup key", 'E', {{{PclSUCCESS, ""}, Parcels::Failure(2801, "Duplicate unique prime key")}, false});
+	fake.Respond("bad sql", 'E', {{{PclSUCCESS, ""}, Parcels::Failure(3706, "Syntax error")}});
+	fake.Respond("dup key", 'E', {{{PclSUCCESS, ""}, Parcels::Failure(2801, "Duplicate unique prime key")}});
 
 	const auto syntax = Error("SELECT * FROM teradata_execute('td', 'bad sql')");
 	CHECK(StringUtil::Contains(syntax, "code: 3706"));
@@ -225,8 +221,7 @@ TEST_CASE_METHOD(TeradataFixture, "Tables are loaded from the data dictionary an
 	FakeCLIv2::Get().Respond(
 	    "SELECT * FROM user.t", 'E',
 	    {Parcels::Statement({Parcels::DataInfo(columns),
-		                     Parcels::Record({false, false}, Parcels::Int32(7) + Parcels::Varchar("seven"))}),
-		 false});
+		                     Parcels::Record({false, false}, Parcels::Int32(7) + Parcels::Varchar("seven"))})});
 
 	auto columns_result = Run("SELECT column_name, data_type FROM duckdb_columns() WHERE database_name = 'td' "
 	                          "ORDER BY column_index");
@@ -245,7 +240,7 @@ TEST_CASE_METHOD(TeradataFixture, "Filters are pushed into the scan SQL", "[inte
 	ServeCatalog();
 	FakeCLIv2::Get().Respond(
 	    "SELECT * FROM user.t", 'E',
-	    {Parcels::Statement({Parcels::DataInfo({{NULLABLE_INTEGER, 4, ""}, {NULLABLE_VARCHAR, 20, ""}})}), false});
+	    {Parcels::Statement({Parcels::DataInfo({{NULLABLE_INTEGER, 4, ""}, {NULLABLE_VARCHAR, 20, ""}})})});
 
 	Run("SELECT * FROM td.user.t WHERE id = 42");
 	const auto sql = RequestSQL();
@@ -253,6 +248,44 @@ TEST_CASE_METHOD(TeradataFixture, "Filters are pushed into the scan SQL", "[inte
 	                               [](const string &s) { return StringUtil::StartsWith(s, "SELECT * FROM user.t"); });
 	REQUIRE(scan != sql.end());
 	CHECK(*scan == "SELECT * FROM user.t WHERE \"id\" = '42'");
+}
+
+TEST_CASE_METHOD(TeradataFixture, "A dropped table is gone under any spelling, and can be recreated", "[integration]") {
+	Attach();
+	ServeCatalog();
+	REQUIRE(Run("SELECT * FROM td.user.T").names.size() == 2);
+
+	// Dropped under a different spelling than the one it is cached under
+	Run("DROP TABLE td.user.T");
+	CHECK(Contains(RequestSQL(), "DROP Table \"user\".\"T\""));
+	CHECK(StringUtil::Contains(Error("SELECT * FROM td.user.t"), "does not exist"));
+	CHECK(StringUtil::Contains(Error("SELECT * FROM td.user.T"), "does not exist"));
+
+	// Recreated with yet another spelling, it is found case-insensitively
+	Run("CREATE TABLE td.user.SalesLog (x INTEGER)");
+	FakeCLIv2::Get().Respond("SELECT * FROM user.SalesLog", 'E',
+	                         {Parcels::Statement({Parcels::DataInfo({{NULLABLE_INTEGER, 4, ""}})})});
+	CHECK(Run("SELECT * FROM td.user.saleslog").RowCount() == 0);
+}
+
+TEST_CASE_METHOD(TeradataFixture, "Indexes loaded from the data dictionary list their column", "[integration]") {
+	Attach();
+	ServeCatalog();
+	FakeCLIv2::Get().Respond(
+	    "DBC.IndicesV", 'E',
+	    {Parcels::Statement({Parcels::DataInfo({{NULLABLE_VARCHAR, 128, ""},
+		                                        {NULLABLE_VARCHAR, 128, ""},
+		                                        {NULLABLE_CHAR, 1, ""},
+		                                        {NULLABLE_VARCHAR, 128, ""},
+		                                        {NULLABLE_CHAR, 1, ""}}),
+		                     Parcels::Record({false, false, false, false, false},
+		                                     Parcels::Varchar("t") + Parcels::Varchar("t_id") + Parcels::Char("P") +
+		                                         Parcels::Varchar("id") + Parcels::Char("Y"))})});
+
+	auto indexes = Run("SELECT index_name, sql FROM duckdb_indexes() WHERE database_name = 'td'");
+	REQUIRE(indexes.RowCount() == 1);
+	CHECK(indexes.GetValue(0, 0) == Value("t_id"));
+	CHECK(StringUtil::Contains(indexes.GetValue(1, 0).ToString(), "(id)"));
 }
 
 TEST_CASE_METHOD(TeradataFixture, "INSERT sends one parameter record per row", "[integration]") {
@@ -289,9 +322,19 @@ TEST_CASE_METHOD(TeradataFixture, "INSERT sends one parameter record per row", "
 //----------------------------------------------------------------------------------------------------------------------
 // Cancellation
 //----------------------------------------------------------------------------------------------------------------------
+namespace {
+
+// Teradata takes this long to answer SLOW: far longer than the cancellations below wait, but finite,
+// so a broken cancellation fails the test instead of hanging it
+FakeResponse SlowResponse() {
+	return {Parcels::Statement(), std::chrono::seconds(10)};
+}
+
+} // namespace
+
 TEST_CASE_METHOD(TeradataFixture, "A timed out request is aborted and the session stays usable", "[integration]") {
 	Attach();
-	FakeCLIv2::Get().Respond("SLOW", 'E', {{}, true});
+	FakeCLIv2::Get().Respond("SLOW", 'E', SlowResponse());
 
 	Run("SET max_execution_time = 200");
 	const auto start = std::chrono::steady_clock::now();
@@ -319,27 +362,41 @@ TEST_CASE_METHOD(TeradataFixture, "A timed out request is aborted and the sessio
 
 TEST_CASE_METHOD(TeradataFixture, "An interrupted request is aborted", "[integration]") {
 	Attach();
-	FakeCLIv2::Get().Respond("SLOW", 'E', {{}, true});
+	FakeCLIv2::Get().Respond("SLOW", 'E', SlowResponse());
 
+	// Interrupt only once the request is in flight: an interrupt before the query starts would be cleared
+	bool saw_request = false;
 	std::thread interrupter([&]() {
-		std::this_thread::sleep_for(std::chrono::milliseconds(200));
-		con.Interrupt();
+		saw_request = FakeCLIv2::Get().WaitForRequest("SELECT SLOW", std::chrono::seconds(5));
+		if (saw_request) {
+			con.Interrupt();
+		}
 	});
-	const auto error = Error("SELECT * FROM teradata_execute('td', 'SELECT SLOW')");
+	auto result = con.Query("SELECT * FROM teradata_execute('td', 'SELECT SLOW')");
 	interrupter.join();
 
-	CHECK(StringUtil::Contains(error, "Interrupted"));
+	REQUIRE(saw_request);
+	REQUIRE(result->HasError());
+	CHECK(StringUtil::Contains(result->GetError(), "Interrupted"));
 	CHECK(Contains(FakeCLIv2::Get().Calls(), "ABT"));
 }
 
 TEST_CASE_METHOD(TeradataFixture, "Transaction statements are never interrupted", "[integration]") {
 	Attach();
 	Run("SELECT * FROM teradata_execute('td', 'SELECT 1')");
+
+	vector<FakeRequest> transaction_requests;
 	for (auto &request : FakeCLIv2::Get().Requests()) {
 		if (StringUtil::Contains(request.sql, "TRANSACTION")) {
-			INFO(request.sql);
-			CHECK_FALSE(request.non_blocking);
+			transaction_requests.push_back(request);
 		}
+	}
+	const auto sql = RequestSQL();
+	REQUIRE(Contains(sql, "BEGIN TRANSACTION;"));
+	REQUIRE(Contains(sql, "END TRANSACTION;"));
+	for (auto &request : transaction_requests) {
+		INFO(request.sql);
+		CHECK_FALSE(request.non_blocking);
 	}
 }
 

@@ -1,4 +1,4 @@
-// Generated from the original GetTeradataTypeFromParcel switch, to pin its behaviour
+// Generated from the original GetTeradataTypeFromParcel switch, to pin its behaviour (LONG VARBYTE corrected)
 // clang-format off
 {400, TeradataTypeId::BLOB, TeradataColumnTypeVariant::STANDARD},
 {448, TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD},
@@ -56,11 +56,12 @@
 {1192, TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_IN},
 {1193, TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_INOUT},
 {1194, TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_OUT},
-{697, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD},
-{698, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE},
-{1197, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN},
-{1198, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT},
-{1199, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT},
+// LONG VARBYTE: the original switch was off by one; these are the documented CLIv2 codes
+{696, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD},
+{697, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE},
+{1196, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN},
+{1197, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT},
+{1198, TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT},
 {748, TeradataTypeId::DATE, TeradataColumnTypeVariant::STANDARD},
 {749, TeradataTypeId::DATE, TeradataColumnTypeVariant::NULLABLE},
 {1248, TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_IN},

@@ -125,25 +125,9 @@ optional<pair<ColumnDefinition, TeradataType>> TryConvertColumn(const TeradataCo
 	}
 }
 
-//! The definition of one table from its column rows, or nullptr if any column has an unsupported type
-unique_ptr<TeradataTableInfo> TryBuildTableInfo(const Identifier &schema_name,
-                                                vector<TeradataColumnRow>::const_iterator begin,
-                                                vector<TeradataColumnRow>::const_iterator end) {
-	auto info = make_uniq<TeradataTableInfo>();
-	info->SetQualifiedName(QualifiedName(Identifier(), schema_name, Identifier(begin->table_name)));
-	for (auto row = begin; row != end; ++row) {
-		auto column = TryConvertColumn(*row);
-		if (!column) {
-			return nullptr;
-		}
-		info->columns.AddColumn(std::move(column->first));
-		info->teradata_types.push_back(column->second);
-	}
-	return info;
-}
-
-vector<TeradataColumnRow> ReadColumnRows(TeradataQueryResult &result) {
-	vector<TeradataColumnRow> rows;
+//! Call `callback` for each row of the column catalog query
+template <class CALLBACK>
+void ForEachColumnRow(TeradataQueryResult &result, CALLBACK &&callback) {
 	for (auto &chunk : result.Chunks()) {
 		chunk.Flatten();
 		const auto tbl_names = FlatVector::GetData<string_t>(chunk.data[0]);
@@ -151,28 +135,64 @@ vector<TeradataColumnRow> ReadColumnRows(TeradataQueryResult &result) {
 		const auto col_types = FlatVector::GetData<string_t>(chunk.data[2]);
 		const auto col_sizes = FlatVector::GetData<int32_t>(chunk.data[3]);
 		for (idx_t row_idx = 0; row_idx < chunk.size(); row_idx++) {
-			rows.push_back({tbl_names[row_idx].GetString(), col_names[row_idx].GetString(),
-			                col_types[row_idx].GetString(), col_sizes[row_idx]});
+			callback(TeradataColumnRow {tbl_names[row_idx].GetString(), col_names[row_idx].GetString(),
+			                            col_types[row_idx].GetString(), col_sizes[row_idx]});
 		}
 	}
-	return rows;
 }
 
 } // namespace
 
+//----------------------------------------------------------------------------------------------------------------------
+// TeradataTableInfoBuilder
+//----------------------------------------------------------------------------------------------------------------------
+TeradataTableInfoBuilder::TeradataTableInfoBuilder(Identifier schema_name_p) : schema_name(std::move(schema_name_p)) {
+}
+
+void TeradataTableInfoBuilder::Add(const TeradataColumnRow &row) {
+	if (!started || row.table_name != current_table) {
+		FinishTable();
+		StartTable(row.table_name);
+	}
+	if (!current) {
+		// This table has an unsupported column, skip the rest of it
+		return;
+	}
+	auto column = TryConvertColumn(row);
+	if (!column) {
+		current.reset();
+		return;
+	}
+	current->columns.AddColumn(std::move(column->first));
+	current->teradata_types.push_back(column->second);
+}
+
+vector<unique_ptr<TeradataTableInfo>> TeradataTableInfoBuilder::Finish() {
+	FinishTable();
+	started = false;
+	return std::move(completed);
+}
+
+void TeradataTableInfoBuilder::StartTable(const string &table_name) {
+	started = true;
+	current_table = table_name;
+	current = make_uniq<TeradataTableInfo>();
+	current->SetQualifiedName(QualifiedName(Identifier(), schema_name, Identifier(table_name)));
+}
+
+void TeradataTableInfoBuilder::FinishTable() {
+	if (current) {
+		completed.push_back(std::move(current));
+	}
+}
+
 vector<unique_ptr<TeradataTableInfo>> BuildTableInfos(const Identifier &schema_name,
                                                       const vector<TeradataColumnRow> &rows) {
-	vector<unique_ptr<TeradataTableInfo>> result;
-	for (auto begin = rows.begin(); begin != rows.end();) {
-		const auto end = std::find_if(
-		    begin, rows.end(), [&](const TeradataColumnRow &row) { return row.table_name != begin->table_name; });
-		auto info = TryBuildTableInfo(schema_name, begin, end);
-		if (info) {
-			result.push_back(std::move(info));
-		}
-		begin = end;
+	TeradataTableInfoBuilder builder(schema_name);
+	for (auto &row : rows) {
+		builder.Add(row);
 	}
-	return result;
+	return builder.Finish();
 }
 
 string GetTeradataCreateTableSQL(const CreateTableInfo &info, bool use_primary_index) {
@@ -237,9 +257,11 @@ void TeradataTableSet::LoadEntries(ClientContext &context) {
 
 	const auto result = conn.Query(query, false, context);
 
-	for (auto &info : BuildTableInfos(schema.name, ReadColumnRows(*result))) {
-		const auto table_name = info->GetTableName().GetIdentifierName();
-		entries[table_name] = make_uniq<TeradataTableEntry>(catalog, schema, *info);
+	// Group the rows into tables as they arrive; publish the tables once the whole result has been read
+	TeradataTableInfoBuilder builder(schema.name);
+	ForEachColumnRow(*result, [&](const TeradataColumnRow &row) { builder.Add(row); });
+	for (auto &info : builder.Finish()) {
+		CreateEntry(make_uniq<TeradataTableEntry>(catalog, schema, *info));
 	}
 }
 

@@ -136,8 +136,7 @@ TEST_CASE("Multi-column filters are rejected", "[filter]") {
 TEST_CASE("DELETE/UPDATE WHERE clauses come from the scan filters", "[filter]") {
 	auto set = FiltersOn(0, ColCmp(ExpressionType::COMPARE_EQUAL, 7));
 	const auto clause = TableFilterClause(set, {"id", "name"}, {ColumnIndex(0), ColumnIndex(1)}, "DELETE");
-	CHECK(clause.find("id") != string::npos);
-	CHECK(clause.find("7") != string::npos);
+	CHECK(clause == "(id = 7)");
 
 	TableFilterSet empty;
 	CHECK(TableFilterClause(empty, {"id"}, {ColumnIndex(0)}, "DELETE").empty());

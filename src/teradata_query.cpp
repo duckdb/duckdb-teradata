@@ -69,6 +69,13 @@ bool IsTransmittedAs(const TeradataType &expected, const TeradataType &actual) {
 
 void CheckBoundTypes(const vector<string> &names, const vector<TeradataType> &expected,
                      const vector<TeradataType> &actual) {
+	// A result without data (no DATAINFO parcel) carries no column types to compare
+	if (!actual.empty() && actual.size() != expected.size()) {
+		throw InvalidInputException("Teradata query schema has changed since it was last bound!\n"
+		                            "Expected %d column(s) but received %d\n"
+		                            "Please re-execute or re-prepare the query",
+		                            expected.size(), actual.size());
+	}
 	for (idx_t i = 0; i < actual.size(); i++) {
 		if (!IsTransmittedAs(expected[i], actual[i])) {
 			throw InvalidInputException("Teradata query schema has changed since it was last bound!\n"

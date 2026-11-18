@@ -2,7 +2,7 @@
 
 #include "teradata_common.hpp"
 
-#include <functional>
+#include <chrono>
 #include <mutex>
 
 namespace duckdb {
@@ -40,8 +40,8 @@ struct Parcels {
 //! What the fake server does with a request
 struct FakeResponse {
 	vector<FakeParcel> parcels;
-	//! Never send a response: fetches return EM_NODATA (non-blocking) forever
-	bool never_answers = false;
+	//! How long the server takes to answer: until then, fetches return EM_NODATA
+	std::chrono::milliseconds delay {0};
 };
 
 //! A request the fake server received
@@ -68,6 +68,8 @@ public:
 
 	vector<string> Calls();
 	vector<FakeRequest> Requests();
+	//! Wait until a request whose SQL contains `sql_fragment` has been received; false on timeout
+	bool WaitForRequest(const string &sql_fragment, std::chrono::milliseconds timeout);
 
 private:
 	struct Rule {
@@ -81,16 +83,23 @@ private:
 	Int32 Call(struct DBCAREA &dbc);
 	Int32 InitiateRequest(struct DBCAREA &dbc);
 	Int32 Fetch(struct DBCAREA &dbc);
+	static Int32 Error(struct DBCAREA &dbc, const string &message);
 
 	std::mutex lock;
 	vector<Rule> rules;
 	vector<string> calls;
 	vector<FakeRequest> requests;
 
-	// The request being answered
-	FakeResponse current;
-	idx_t parcel_idx = 0;
+	//! A request being answered, by request id
+	struct ActiveRequest {
+		FakeResponse response;
+		idx_t parcel_idx;
+		std::chrono::steady_clock::time_point started;
+	};
+	unordered_map<Int32, ActiveRequest> active;
 	Int32 next_id = 0;
+
+	Int32 StartRequest(FakeResponse response);
 };
 
 } // namespace duckdb

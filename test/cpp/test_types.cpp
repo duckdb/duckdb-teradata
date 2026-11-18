@@ -29,7 +29,8 @@ TEST_CASE("DecodeParcelType matches every code of the original switch", "[types]
 
 TEST_CASE("DecodeParcelType rejects unknown codes", "[types]") {
 	// 401..402 would be BLOB variants, which Teradata does not send
-	for (const int16_t code : {0, 1, 401, 900, 449 + 2, 1300, -1}) {
+	// 698 and 1199 were LONG VARBYTE codes in the original, off-by-one switch
+	for (const int16_t code : {0, 1, 401, 900, 449 + 2, 698, 1199, 1300, -1}) {
 		INFO("parcel type code " << code);
 		REQUIRE_THROWS_AS(DecodeParcelType(code), NotImplementedException);
 	}
