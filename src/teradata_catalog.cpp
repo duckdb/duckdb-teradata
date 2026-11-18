@@ -65,6 +65,10 @@ optional_ptr<SchemaCatalogEntry> TeradataCatalog::LookupSchema(CatalogTransactio
 	return reinterpret_cast<SchemaCatalogEntry *>(entry.get());
 }
 
+optional<Identifier> TeradataCatalog::GetDefaultSchema() const {
+	return Identifier(default_schema);
+}
+
 void TeradataCatalog::DropSchema(ClientContext &context, DropInfo &info) {
 	throw NotImplementedException("TeradataCatalog::DropSchema");
 }

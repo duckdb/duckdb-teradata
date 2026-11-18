@@ -28,6 +28,8 @@ public:
 	optional_ptr<SchemaCatalogEntry> LookupSchema(CatalogTransaction transaction, const EntryLookupInfo &schema_lookup,
 	                                              OnEntryNotFound if_not_found) override;
 	void DropSchema(ClientContext &context, DropInfo &info) override;
+	//! The Teradata database given at ATTACH (or the user's), used for names without a schema
+	optional<Identifier> GetDefaultSchema() const override;
 
 	PhysicalOperator &PlanInsert(ClientContext &context, PhysicalPlanGenerator &planner, LogicalInsert &op,
 	                             optional_ptr<PhysicalOperator> plan) override;

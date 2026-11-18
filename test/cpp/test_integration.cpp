@@ -288,6 +288,16 @@ TEST_CASE_METHOD(TeradataFixture, "Indexes loaded from the data dictionary list 
 	CHECK(StringUtil::Contains(indexes.GetValue(1, 0).ToString(), "(id)"));
 }
 
+TEST_CASE_METHOD(TeradataFixture, "Tables created without a schema go to the attached database", "[integration]") {
+	Run("ATTACH 'host/user,pass' AS td (TYPE teradata, DATABASE 'sales')");
+	FakeCLIv2::Get().Respond(
+	    "DBC.DatabasesV", 'E',
+	    {Parcels::Statement({Parcels::DataInfo({{NULLABLE_VARCHAR, 128, ""}, {NULLABLE_VARCHAR, 255, ""}}),
+		                     Parcels::Record({false, true}, Parcels::Varchar("sales") + Parcels::Varchar(""))})});
+	Run("CREATE TABLE td.events (id INTEGER)");
+	CHECK(Contains(RequestSQL(), "CREATE TABLE \"sales\".\"events\"(\"id\" INTEGER);"));
+}
+
 TEST_CASE_METHOD(TeradataFixture, "INSERT sends one parameter record per row", "[integration]") {
 	Attach();
 	ServeCatalog();

@@ -10,7 +10,7 @@ require-env TD_DB
 
 # Attach teradata database
 statement ok
-attach '${TD_LOGON}' as td (TYPE TERADATA, DATABASE '${TD_DB}');
+attach '{TD_LOGON}' as td (TYPE TERADATA, DATABASE '{TD_DB}');
 
 # Drop table if already exists
 statement ok
@@ -36,7 +36,7 @@ SELECT * FROM td.filter_pushdown_test WHERE i > 2 ORDER BY ALL;
 query II
 EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i>2;
 ----
-physical_plan	<REGEX>:.*Filters: i>2.*
+physical_plan	<REGEX>:.*Filters: i ?> ?2.*
 
 # Less than
 query I
@@ -48,7 +48,7 @@ SELECT * FROM td.filter_pushdown_test WHERE i < 2 ORDER BY ALL;
 query II
 EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i<2;
 ----
-physical_plan	<REGEX>:.*Filters: i<2.*
+physical_plan	<REGEX>:.*Filters: i ?< ?2.*
 
 # Equal
 query I
@@ -59,7 +59,7 @@ SELECT * FROM td.filter_pushdown_test WHERE i = 2 ORDER BY ALL;
 query II
 EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i=2;
 ----
-physical_plan	<REGEX>:.*Filters: i=2.*
+physical_plan	<REGEX>:.*Filters: i ?= ?2.*
 
 # Not equal
 query I
@@ -73,7 +73,7 @@ SELECT * FROM td.filter_pushdown_test WHERE i <> 2 ORDER BY ALL;
 query II
 EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i<>2;
 ----
-physical_plan	<REGEX>:.*Filters: i!=2.*
+physical_plan	<REGEX>:.*Filters: i ?!= ?2.*
 
 # AND
 query I
@@ -85,7 +85,7 @@ SELECT * FROM td.filter_pushdown_test WHERE i > 1 AND i < 4 ORDER BY ALL;
 query II
 EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i>1 AND i<4;
 ----
-physical_plan	<REGEX>:.*Filters: i>1 AND i<4.*
+physical_plan	<REGEX>:.*Filters: \(?i ?> ?1\)? AND \(?i ?< ?4\)?.*
 
 # OR
 query I
@@ -97,7 +97,7 @@ SELECT * FROM td.filter_pushdown_test WHERE i < 1 OR i > 3 ORDER BY ALL;
 query II
 EXPLAIN SELECT * FROM td.filter_pushdown_test WHERE i<1 OR i>3;
 ----
-physical_plan	<REGEX>:.*i<1 OR i>3.*
+physical_plan	<REGEX>:.*\(?i ?< ?1\)? OR \(?i ?> ?3\)?.*
 
 # IN
 query I

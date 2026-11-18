@@ -140,7 +140,11 @@ inline TeradataQueryResultIterator::TeradataQueryResultIterator(TeradataQueryRes
 
 	scan_chunk = make_shared_ptr<DataChunk>();
 	result->InitScanChunk(*scan_chunk);
-	result->Scan(*scan_chunk);
+	if (!result->Scan(*scan_chunk)) {
+		// No data: start at the end, rather than yielding an empty chunk
+		result = nullptr;
+		return;
+	}
 	row_index += scan_chunk->size();
 }
 
