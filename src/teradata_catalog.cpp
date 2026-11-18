@@ -97,8 +97,7 @@ string TeradataCatalog::GetDBPath() {
 	return path;
 }
 
-TeradataCatalog &TeradataCatalog::GetAttached(ClientContext &context, const string &db_name,
-                                              const string &function_name) {
+TeradataCatalog &TeradataCatalog::Find(ClientContext &context, const string &db_name, const string &function_name) {
 	auto db = DatabaseManager::Get(context).GetDatabase(context, Identifier(db_name));
 	if (!db) {
 		throw BinderException("Failed to find attached database \"%s\" referenced in %s", db_name, function_name);

@@ -62,11 +62,19 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 }
 
 void TeradataRequestContext::Execute(const string &sql) {
+	// The statement may call a stored procedure that returns result sets: accept them, and discard them
+	dbc.dynamic_result_sets_allowed = 'Y';
 	BeginRequest(sql, 'E');
 
-	MatchParcel(PclENDSTATEMENT);
-
-	EndRequest();
+	// Read up to the end of the request; failures are raised by FetchParcel
+	uint16_t parcel;
+	do {
+		parcel = FetchParcel();
+		if (parcel == PclERROR) {
+			ThrowErrorParcel("Teradata request failed");
+		}
+	} while (parcel != PclENDREQUEST);
+	is_open = false;
 }
 
 void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
@@ -265,20 +273,21 @@ void TeradataRequestContext::MatchParcel(uint16_t flavor) {
 
 	if (result != flavor) {
 		if (result == PclERROR) {
-			// Parse the error message
-			BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
-			const auto stmt_no = reader.Read<uint16_t>();
-			const auto info = reader.Read<uint16_t>();
-			const auto code = reader.Read<uint16_t>();
-			const auto msg_len = reader.Read<uint16_t>();
-			const auto msg = reader.ReadBytes(msg_len);
-			const auto msg_str = string(msg, msg_len);
-			throw IOException("Expected parcel flavor %d, got error: stmt_no: %d, info: %d, code: %d, msg: '%s'",
-			                  flavor, stmt_no, info, code, msg_str);
+			ThrowErrorParcel(StringUtil::Format("Expected parcel flavor %d, got error", flavor));
 		}
-
 		throw IOException("Expected parcel flavor %d, got %d", flavor, result);
 	}
+}
+
+void TeradataRequestContext::ThrowErrorParcel(const string &context) const {
+	BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
+	const auto stmt_no = reader.Read<uint16_t>();
+	const auto info = reader.Read<uint16_t>();
+	const auto code = reader.Read<uint16_t>();
+	const auto msg_len = reader.Read<uint16_t>();
+	const auto msg = reader.ReadBytes(msg_len);
+	throw IOException("%s: stmt_no: %d, info: %d, code: %d, msg: '%s'", context, stmt_no, info, code,
+	                  string(msg, msg_len));
 }
 
 uint16_t TeradataRequestContext::FetchParcel() {

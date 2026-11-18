@@ -26,7 +26,14 @@ void TeradataTransaction::Commit() {
 }
 
 void TeradataTransaction::Rollback() {
-	con.Execute("ABORT;");
+	try {
+		con.Execute("ABORT;");
+	} catch (IOException &ex) {
+		// Teradata answers ABORT with failure 3514 ("User-generated transaction ABORT"): the rollback succeeded
+		if (!StringUtil::Contains(ex.what(), "code: 3514,")) {
+			throw;
+		}
+	}
 }
 
 } // namespace duckdb

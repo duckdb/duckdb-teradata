@@ -153,6 +153,58 @@ TEST_CASE_METHOD(TeradataFixture, "teradata_execute runs a statement in a transa
 	CHECK(*(stmt + 1) == "END TRANSACTION;");
 }
 
+TEST_CASE_METHOD(TeradataFixture, "teradata_execute can run a statement outside a transaction", "[integration]") {
+	Attach();
+	Run("SELECT * FROM teradata_execute('td', 'CALL get_data(''x'')', transaction := false)");
+
+	const auto sql = RequestSQL();
+	REQUIRE(Contains(sql, "CALL get_data('x')"));
+	CHECK_FALSE(Contains(sql, "BEGIN TRANSACTION;"));
+	CHECK_FALSE(Contains(sql, "END TRANSACTION;"));
+
+	// transaction := true is the default
+	Run("SELECT * FROM teradata_execute('td', 'SELECT 1', transaction := true)");
+	CHECK(Contains(RequestSQL(), "BEGIN TRANSACTION;"));
+}
+
+TEST_CASE_METHOD(TeradataFixture, "teradata_execute without a transaction is refused inside an open one",
+                 "[integration]") {
+	Attach();
+	Run("BEGIN");
+	Run("SELECT * FROM teradata_execute('td', 'SELECT 1')");
+	CHECK(StringUtil::Contains(Error("SELECT * FROM teradata_execute('td', 'CALL p()', transaction := false)"),
+	                           "outside BEGIN ... COMMIT"));
+	Run("ROLLBACK");
+	CHECK_FALSE(Contains(RequestSQL(), "CALL p()"));
+}
+
+TEST_CASE_METHOD(TeradataFixture, "teradata_execute discards the result sets of a procedure", "[integration]") {
+	Attach();
+	FakeCLIv2::Get().Respond(
+	    "CALL report", 'E',
+	    {{{PclSUCCESS, ""},
+		  {PclRESULTSET, ""},
+		  Parcels::DataInfo({{NULLABLE_VARCHAR, 100, ""}}),
+		  Parcels::Record({false}, Parcels::Varchar("That ran for 0:00:19 with 10 statements and 0 errors.")),
+		  {PclENDSTATEMENT, ""},
+		  {PclENDREQUEST, ""}}});
+	Run("SELECT * FROM teradata_execute('td', 'CALL report()', transaction := false)");
+	CHECK(Contains(RequestSQL(), "CALL report()"));
+	// The session is still usable
+	Run("SELECT * FROM teradata_execute('td', 'SELECT 1')");
+}
+
+TEST_CASE_METHOD(TeradataFixture, "ROLLBACK accepts Teradata's answer to ABORT", "[integration]") {
+	Attach();
+	// Teradata answers ABORT with failure 3514
+	FakeCLIv2::Get().Respond("ABORT;", 'E',
+	                         {{{PclSUCCESS, ""}, Parcels::Failure(3514, "User-generated transaction ABORT.")}});
+	Run("BEGIN");
+	Run("SELECT * FROM teradata_execute('td', 'SELECT 1')");
+	Run("ROLLBACK");
+	CHECK(RequestSQL().back() == "ABORT;");
+}
+
 TEST_CASE_METHOD(TeradataFixture, "teradata_execute and teradata_query check their arguments", "[integration]") {
 	Attach();
 	CHECK(StringUtil::Contains(Error("SELECT * FROM teradata_execute('nope', 'SELECT 1')"),
@@ -233,6 +285,26 @@ TEST_CASE_METHOD(TeradataFixture, "Tables are loaded from the data dictionary an
 	REQUIRE(rows.RowCount() == 1);
 	CHECK(rows.GetValue(0, 0) == Value::INTEGER(7));
 	CHECK(rows.GetValue(1, 0) == Value("seven"));
+}
+
+TEST_CASE_METHOD(TeradataFixture, "Scans return only the projected columns", "[integration]") {
+	Attach();
+	ServeCatalog();
+	FakeCLIv2::Get().Respond(
+	    "SELECT * FROM user.t", 'E',
+	    {Parcels::Statement({Parcels::DataInfo({{NULLABLE_INTEGER, 4, ""}, {NULLABLE_VARCHAR, 20, ""}}),
+		                     Parcels::Record({false, false}, Parcels::Int32(7) + Parcels::Varchar("seven")),
+		                     Parcels::Record({false, false}, Parcels::Int32(8) + Parcels::Varchar("eight"))})});
+
+	auto names = Run("SELECT name FROM td.user.t ORDER BY name");
+	REQUIRE(names.RowCount() == 2);
+	CHECK(names.GetValue(0, 0) == Value("eight"));
+
+	auto reordered = Run("SELECT name, id FROM td.user.t ORDER BY id");
+	CHECK(reordered.GetValue(0, 0) == Value("seven"));
+	CHECK(reordered.GetValue(1, 0) == Value::INTEGER(7));
+
+	CHECK(Run("SELECT count(*) FROM td.user.t").GetValue(0, 0) == Value::BIGINT(2));
 }
 
 TEST_CASE_METHOD(TeradataFixture, "Filters are pushed into the scan SQL", "[integration]") {

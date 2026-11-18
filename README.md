@@ -16,6 +16,7 @@ This is a DuckDB extension for connecting to and "attach":ing Teradata databases
     * [Executing raw SQL commands](#executing-raw-sql-commands)
     * [Session settings and query bands](#session-settings-and-query-bands)
     * [Cancelling queries](#cancelling-queries)
+    * [Views and row ids](#views-and-row-ids)
   * [Type mapping](#type-mapping)
   * [Configuration Options](#configuration-options)
 * [Compatibility](#compatibility)
@@ -190,6 +191,18 @@ using the DuckDB `CREATE TABLE` statement:
 FROM teradata_execute('td', 'CREATE TABLE my_table (id INT, "value" INT)');
 ```
 
+By default `teradata_execute` runs the command inside the Teradata transaction of the current DuckDB transaction
+(`BEGIN TRANSACTION` ... `END TRANSACTION`). Some commands cannot run inside an explicit transaction, for example stored
+procedures that commit or run DDL themselves. Pass `transaction := false` to run the command on its own, so that
+Teradata commits it by itself:
+
+```sql
+FROM teradata_execute('td', 'CALL my_procedure()', transaction := false);
+```
+
+This is refused inside a DuckDB transaction that has already used the same Teradata database, since the command would
+then run inside that transaction. Result sets returned by a stored procedure are accepted and discarded.
+
 ### Session settings and query bands
 
 `teradata_execute` and `teradata_query` run on the same Teradata session, so session-level settings made with
@@ -213,6 +226,12 @@ SET max_execution_time = 60000; -- milliseconds
 FROM teradata_query('td', 'SELECT ...long running query...');
 -- INTERRUPT Error: Query exceeded maximum execution time
 ```
+
+### Views and row ids
+
+Attached databases list their tables, but not their views: the data dictionary does not describe the columns of a view.
+Query views with `teradata_query`, or attach the database that holds the underlying table. Teradata tables have no row
+id, so selecting `rowid` from an attached table returns NULL.
 
 ## Type mapping
 

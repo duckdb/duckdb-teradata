@@ -49,7 +49,7 @@ public:
 	string GetDBPath() override;
 
 	//! The Teradata catalog attached under `db_name`; throws a BinderException naming `function_name` otherwise
-	static TeradataCatalog &GetAttached(ClientContext &context, const string &db_name, const string &function_name);
+	static TeradataCatalog &Find(ClientContext &context, const string &db_name, const string &function_name);
 
 	static bool IsTeradataScan(const string &name) {
 		return name == "teradata_query" || name == "teradata_scan";

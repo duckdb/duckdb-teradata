@@ -46,6 +46,8 @@ private:
 	// Abort the request and throw if the query was interrupted
 	void CheckInterrupt();
 	void MatchParcel(uint16_t flavor);
+	//! Throw the error carried by the PclERROR parcel in the buffer
+	[[noreturn]] void ThrowErrorParcel(const string &context) const;
 	uint16_t FetchParcel();
 
 	DBCAREA dbc = {};

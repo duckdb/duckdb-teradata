@@ -58,6 +58,11 @@ bool IsTransmittedAs(const TeradataType &expected, const TeradataType &actual) {
 	if (expected == actual) {
 		return true;
 	}
+	// The data dictionary gives character and byte lengths in bytes, results give them in characters (a UNICODE
+	// VARCHAR(15) is 30 bytes). The length does not change how a column is read or which DuckDB type it maps to.
+	if (expected.GetId() == actual.GetId() && expected.HasLengthModifier()) {
+		return true;
+	}
 	if (actual.GetId() != TeradataTypeId::CHAR) {
 		return false;
 	}
@@ -96,7 +101,7 @@ static unique_ptr<FunctionData> TeradataQueryBind(ClientContext &context, TableF
 		throw BinderException("Parameters to teradata_query cannot be NULL");
 	}
 
-	auto &td_catalog = TeradataCatalog::GetAttached(context, input.inputs[0].GetValue<string>(), "teradata_query");
+	auto &td_catalog = TeradataCatalog::Find(context, input.inputs[0].GetValue<string>(), "teradata_query");
 	auto &transaction = TeradataTransaction::Get(context, td_catalog);
 	const auto sql = StripTrailingSemicolons(input.inputs[1].GetValue<string>());
 
@@ -187,21 +192,28 @@ static void TeradataQueryExec(ClientContext &context, TableFunctionInput &data, 
 
 	// Get the scan count
 	const auto count = state.scan_chunk.size();
+	if (count == 0) {
+		output.SetCardinality(0);
+		return;
+	}
 
 	// Cast all vectors
 	// For most types, this is a no-op, the target just references the source.
 	// But there are some special cases, like TIMESTAMP that always gets transmitted as VARCHAR.
-	for (idx_t output_idx = 0; output_idx < state.scan_chunk.ColumnCount(); output_idx++) {
+	// The scan reads every column of the result; DuckDB asks for the projected ones (column_ids), in its order
+	for (idx_t output_idx = 0; output_idx < output.ColumnCount(); output_idx++) {
 		const auto col_idx = state.column_ids[output_idx];
-
-		if (col_idx == COLUMN_IDENTIFIER_ROW_ID) {
-			throw InvalidInputException("Teradata query does not support the row id column (rowid)");
-		}
-
-		auto &source = state.scan_chunk.data[col_idx]; // col ids
 		auto &target = output.data[output_idx];
 
-		VectorOperations::DefaultCast(source, target, count);
+		if (col_idx == COLUMN_IDENTIFIER_ROW_ID || col_idx == COLUMN_IDENTIFIER_EMPTY) {
+			// Teradata tables have no row id. DuckDB asks for one when a query needs no column (count(*)), and
+			// for DELETE/UPDATE, which this extension rebuilds as Teradata SQL. Neither reads the values.
+			target.SetVectorType(VectorType::CONSTANT_VECTOR);
+			ConstantVector::SetNull(target, true);
+			continue;
+		}
+
+		VectorOperations::DefaultCast(state.scan_chunk.data[col_idx], target, count);
 	}
 
 	output.SetCardinality(count);

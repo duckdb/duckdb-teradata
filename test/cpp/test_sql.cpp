@@ -118,6 +118,12 @@ TEST_CASE("Temporal columns may arrive as CHAR", "[query]") {
 	CHECK(IsTransmittedAs(TeradataType(TeradataTypeId::TIME, 6), TeradataType(TeradataTypeId::CHAR, 15)));
 	CHECK(IsTransmittedAs(TeradataType(TeradataTypeId::TIME_TZ, 6), TeradataType(TeradataTypeId::CHAR, 21)));
 	CHECK_FALSE(IsTransmittedAs(TeradataTypeId::INTEGER, TeradataTypeId::BIGINT));
+	// A UNICODE VARCHAR(15) is 30 bytes in the data dictionary but 15 characters in a result
+	CHECK(IsTransmittedAs(TeradataType(TeradataTypeId::VARCHAR, 30), TeradataType(TeradataTypeId::VARCHAR, 15)));
+	CHECK(IsTransmittedAs(TeradataType(TeradataTypeId::CHAR, 4), TeradataType(TeradataTypeId::CHAR, 2)));
+	CHECK_FALSE(IsTransmittedAs(TeradataType(TeradataTypeId::VARCHAR, 30), TeradataType(TeradataTypeId::CHAR, 30)));
+	CHECK_FALSE(
+	    IsTransmittedAs(TeradataType(TeradataTypeId::DECIMAL, 18, 2), TeradataType(TeradataTypeId::DECIMAL, 9, 2)));
 	CHECK_FALSE(IsTransmittedAs(TeradataTypeId::INTEGER, TeradataType(TeradataTypeId::CHAR, 15)));
 }
 
