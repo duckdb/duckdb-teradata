@@ -45,11 +45,11 @@ static const char *const CLIV2_SEARCH_PATHS[] = {
 #endif
 #if defined(__linux__)
     "libcliv2.so",
-    "opt/teradata/client/20.00/lib64/libcliv2.so",
-    "opt/teradata/client/17.20/lib64/libcliv2.so",
-    "opt/teradata/client/17.10/lib64/libcliv2.so",
-    "opt/teradata/client/17.00/lib64/libcliv2.so",
-    "opt/teradata/client/16.20/lib64/libcliv2.so",
+    "/opt/teradata/client/20.00/lib64/libcliv2.so",
+    "/opt/teradata/client/17.20/lib64/libcliv2.so",
+    "/opt/teradata/client/17.10/lib64/libcliv2.so",
+    "/opt/teradata/client/17.00/lib64/libcliv2.so",
+    "/opt/teradata/client/16.20/lib64/libcliv2.so",
 #endif
 };
 
