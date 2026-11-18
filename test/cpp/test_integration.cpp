@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iterator>
 #include <thread>
 
 namespace duckdb {
@@ -148,6 +149,8 @@ TEST_CASE_METHOD(TeradataFixture, "teradata_execute runs a statement in a transa
 	const auto sql = RequestSQL();
 	const auto stmt = std::find(sql.begin(), sql.end(), "DELETE FROM x");
 	REQUIRE(stmt != sql.end());
+	REQUIRE(stmt != sql.begin());
+	REQUIRE(stmt + 1 != sql.end());
 	CHECK(*(stmt - 1) == "BEGIN TRANSACTION;");
 	CHECK(*(stmt + 1) == "END TRANSACTION;");
 }
@@ -305,6 +308,7 @@ TEST_CASE_METHOD(TeradataFixture, "A timed out request is aborted and the sessio
 	const auto calls = FakeCLIv2::Get().Calls();
 	const auto abort = std::find(calls.begin(), calls.end(), "ABT");
 	REQUIRE(abort != calls.end());
+	REQUIRE(std::distance(abort, calls.end()) >= 3);
 	CHECK(*(abort + 1) == "ERQ");
 	CHECK(*(abort + 2) == "IRQ ABORT;");
 
