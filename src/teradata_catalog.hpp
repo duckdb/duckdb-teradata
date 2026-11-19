@@ -1,4 +1,9 @@
 #pragma once
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/planner/operator/logical_insert.hpp"
+#include "duckdb/planner/operator/logical_create_table.hpp"
+#include "duckdb/planner/operator/logical_delete.hpp"
+#include "duckdb/planner/operator/logical_update.hpp"
 #include "teradata_storage.hpp"
 #include "teradata_connection.hpp"
 #include "teradata_schema_set.hpp"
@@ -7,7 +12,8 @@ namespace duckdb {
 
 class TeradataCatalog final : public Catalog {
 public:
-	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &databse_to_load, idx_t buffer_size);
+	explicit TeradataCatalog(AttachedDatabase &db, const string &logon_string, const string &databse_to_load,
+	                         idx_t buffer_size);
 	~TeradataCatalog() override;
 
 public:
@@ -22,6 +28,8 @@ public:
 	optional_ptr<SchemaCatalogEntry> LookupSchema(CatalogTransaction transaction, const EntryLookupInfo &schema_lookup,
 	                                              OnEntryNotFound if_not_found) override;
 	void DropSchema(ClientContext &context, DropInfo &info) override;
+	//! The Teradata database given at ATTACH (or the user's), used for names without a schema
+	optional<Identifier> GetDefaultSchema() const override;
 
 	PhysicalOperator &PlanInsert(ClientContext &context, PhysicalPlanGenerator &planner, LogicalInsert &op,
 	                             optional_ptr<PhysicalOperator> plan) override;
@@ -39,6 +47,9 @@ public:
 	bool InMemory() override;
 	string GetCatalogType() override;
 	string GetDBPath() override;
+
+	//! The Teradata catalog attached under `db_name`; throws a BinderException naming `function_name` otherwise
+	static TeradataCatalog &Find(ClientContext &context, const string &db_name, const string &function_name);
 
 	static bool IsTeradataScan(const string &name) {
 		return name == "teradata_query" || name == "teradata_scan";

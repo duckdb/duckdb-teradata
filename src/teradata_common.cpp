@@ -1,10 +1,11 @@
 #include "teradata_common.hpp"
 
 #include "duckdb/common/dl.hpp"
+#include "duckdb/main/settings.hpp"
 
 namespace duckdb {
 
-typedef Int32 (*td_callback)(Int32 *, char *, struct DBCAREA *);
+typedef TeradataCLIV2::callback_t td_callback;
 static td_callback DBCHINI_IMPL = nullptr;
 static td_callback DBCHCL_IMPL = nullptr;
 
@@ -44,11 +45,11 @@ static const char *const CLIV2_SEARCH_PATHS[] = {
 #endif
 #if defined(__linux__)
     "libcliv2.so",
-    "opt/teradata/client/20.00/lib64/libcliv2.so",
-    "opt/teradata/client/17.20/lib64/libcliv2.so",
-    "opt/teradata/client/17.10/lib64/libcliv2.so",
-    "opt/teradata/client/17.00/lib64/libcliv2.so",
-    "opt/teradata/client/16.20/lib64/libcliv2.so",
+    "/opt/teradata/client/20.00/lib64/libcliv2.so",
+    "/opt/teradata/client/17.20/lib64/libcliv2.so",
+    "/opt/teradata/client/17.10/lib64/libcliv2.so",
+    "/opt/teradata/client/17.00/lib64/libcliv2.so",
+    "/opt/teradata/client/16.20/lib64/libcliv2.so",
 #endif
 };
 
@@ -76,6 +77,12 @@ static void *TryLoadCLIV2() {
 	throw IOException("Failed to load Teradata CLIV2: %s", StringUtil::Join(errors, "\n"));
 }
 
+void TeradataCLIV2::SetImplementation(callback_t dbchini, callback_t dbchcl) {
+	lock_guard<mutex> lock(load_mutex);
+	DBCHINI_IMPL = dbchini;
+	DBCHCL_IMPL = dbchcl;
+}
+
 bool TeradataCLIV2::IsLoaded() {
 	lock_guard<mutex> lock(load_mutex);
 	return IsLoadedInternal();
@@ -85,7 +92,7 @@ void TeradataCLIV2::Load(ClientContext &context) {
 	lock_guard<mutex> lock(load_mutex);
 
 	// Check if external access is allowed
-	if (!context.db->config.options.enable_external_access) {
+	if (!Settings::Get<EnableExternalAccessSetting>(context)) {
 		throw PermissionException(
 		    "Loading the Teradata CLIV2 library is not possible as external access is disabled through configuration");
 	}

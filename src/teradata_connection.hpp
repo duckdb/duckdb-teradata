@@ -13,7 +13,7 @@ class TeradataColumnWriter;
 
 class TeradataConnection {
 public:
-	explicit TeradataConnection(const string &logon_string_p, idx_t buffer_size_p) : buffer_size(buffer_size_p){
+	explicit TeradataConnection(const string &logon_string_p, idx_t buffer_size_p) : buffer_size(buffer_size_p) {
 		SetLogonString(logon_string_p);
 		Reconnect();
 	}
@@ -41,18 +41,21 @@ public:
 	void Reconnect();
 	void Disconnect();
 
-	void Execute(const string &sql);
+	// Passing a client context makes the request interruptible
+	void Execute(const string &sql, optional_ptr<ClientContext> context = nullptr);
 
 	// Execute a parameterized statement, once for each row in the chunk
 	// TODO: Move arena and writers into a ExecuteState class
 	void Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
-	             vector<unique_ptr<TeradataColumnWriter>> &writers);
+	             vector<unique_ptr<TeradataColumnWriter>> &writers, optional_ptr<ClientContext> context = nullptr);
 
 	// Execute a query with a result set, optionally materializing everything
-	unique_ptr<TeradataQueryResult> Query(const string &sql, bool materialize);
+	unique_ptr<TeradataQueryResult> Query(const string &sql, bool materialize,
+	                                      optional_ptr<ClientContext> context = nullptr);
 
 	// Prepare a query
-	void Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names);
+	void Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names,
+	             optional_ptr<ClientContext> context = nullptr);
 
 private:
 	string logon_string;

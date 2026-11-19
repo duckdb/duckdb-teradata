@@ -82,22 +82,24 @@ void TeradataConnection::Disconnect() {
 	is_connected = false;
 }
 
-void TeradataConnection::Execute(const string &sql) {
+void TeradataConnection::Execute(const string &sql, optional_ptr<ClientContext> context) {
 	// TODO: Pool request contexts
-	TeradataRequestContext ctx(*this);
+	TeradataRequestContext ctx(*this, context);
 	ctx.Execute(sql);
 }
 
 void TeradataConnection::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
-                                 vector<unique_ptr<TeradataColumnWriter>> &writers) {
-	TeradataRequestContext ctx(*this);
+                                 vector<unique_ptr<TeradataColumnWriter>> &writers,
+                                 optional_ptr<ClientContext> context) {
+	TeradataRequestContext ctx(*this, context);
 	ctx.Execute(sql, chunk, arena, writers);
 }
 
-unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize) {
+unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, bool materialize,
+                                                          optional_ptr<ClientContext> context) {
 
 	// TODO: Pool request contexts
-	auto ctx = make_uniq<TeradataRequestContext>(*this);
+	auto ctx = make_uniq<TeradataRequestContext>(*this, context);
 
 	vector<TeradataType> types;
 	ctx->Query(sql, types);
@@ -112,9 +114,10 @@ unique_ptr<TeradataQueryResult> TeradataConnection::Query(const string &sql, boo
 	}
 }
 
-void TeradataConnection::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
+void TeradataConnection::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names,
+                                 optional_ptr<ClientContext> context) {
 	// TODO: Pool request contexts
-	TeradataRequestContext td_ctx(*this);
+	TeradataRequestContext td_ctx(*this, context);
 	td_ctx.Prepare(sql, types, names);
 }
 

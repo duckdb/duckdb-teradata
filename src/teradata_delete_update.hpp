@@ -1,8 +1,17 @@
 #pragma once
 
 #include "duckdb/execution/physical_operator.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/planner/logical_operator.hpp"
 
 namespace duckdb {
+
+class TableFilterSet;
+
+//! The WHERE clause for a DELETE/UPDATE from the filters pushed into its table scan
+string TableFilterClause(const TableFilterSet &filters, const vector<string> &names,
+                         const vector<ColumnIndex> &column_ids, const string &statement);
 
 class TeradataDeleteUpdate final : public PhysicalOperator {
 public:
@@ -17,7 +26,8 @@ public:
 
 public:
 	// Source interface
-	SourceResultType GetData(ExecutionContext &context, DataChunk &chunk, OperatorSourceInput &input) const override;
+	SourceResultType GetDataInternal(ExecutionContext &context, DataChunk &chunk,
+	                                 OperatorSourceInput &input) const override;
 
 	bool IsSource() const override {
 		return true;

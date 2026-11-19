@@ -1,6 +1,7 @@
 #include "teradata_schema_entry.hpp"
 #include "teradata_table_entry.hpp"
 
+#include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/default/default_table_functions.hpp"
 #include "duckdb/catalog/catalog_entry/table_macro_catalog_entry.hpp"
 #include "duckdb/parser/parsed_data/drop_info.hpp"
@@ -43,7 +44,7 @@ optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateFunction(CatalogTransactio
 optional_ptr<CatalogEntry> TeradataSchemaEntry::CreateTable(CatalogTransaction transaction,
                                                             BoundCreateTableInfo &info) {
 	auto &base_info = info.Base();
-	auto table_name = base_info.table;
+	auto table_name = base_info.GetTableName();
 	if (base_info.on_conflict == OnCreateConflict::REPLACE_ON_CONFLICT) {
 		throw NotImplementedException("TeradataSchemaEntry::CreateTable REPLACE ON CONFLICT");
 	}
@@ -96,7 +97,7 @@ optional_ptr<CatalogEntry> TeradataSchemaEntry::LookupEntry(CatalogTransaction t
 }
 
 void TeradataSchemaEntry::DropEntry(ClientContext &context, DropInfo &info) {
-	info.schema = name;
+	info.SetSchema(name);
 	switch (info.type) {
 	case CatalogType::TABLE_ENTRY:
 		tables.DropEntry(context, info);
@@ -123,8 +124,9 @@ static const DefaultTableMacro td_table_macros[] = {
 
 optional_ptr<CatalogEntry> TeradataSchemaEntry::LoadBuiltInFunction(DefaultTableMacro macro) {
 	string macro_def = macro.macro;
-	macro_def = StringUtil::Replace(macro_def, "{CATALOG}", KeywordHelper::WriteQuoted(catalog.GetName(), '\''));
-	macro_def = StringUtil::Replace(macro_def, "{SCHEMA}", KeywordHelper::WriteQuoted(name, '\''));
+	macro_def = StringUtil::Replace(macro_def, "{CATALOG}",
+	                                KeywordHelper::WriteQuoted(catalog.GetName().GetIdentifierName(), '\''));
+	macro_def = StringUtil::Replace(macro_def, "{SCHEMA}", KeywordHelper::WriteQuoted(name.GetIdentifierName(), '\''));
 	macro.macro = macro_def.c_str();
 
 	auto info = DefaultTableFunctionGenerator::CreateTableMacroInfo(macro);

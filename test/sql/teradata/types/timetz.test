@@ -10,7 +10,7 @@ require-env TD_DB
 
 # Attach teradata database
 statement ok
-ATTACH '${TD_LOGON}' AS td (TYPE TERADATA, DATABASE '${TD_DB}');
+ATTACH '{TD_LOGON}' AS td (TYPE TERADATA, DATABASE '{TD_DB}');
 
 # Drop table if it exists
 statement ok

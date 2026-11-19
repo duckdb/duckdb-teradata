@@ -99,6 +99,8 @@ public:
 	// NOLINTNEXTLINE: Allow implicit conversion from `TeradataTypeId`
 	TeradataType(TeradataTypeId id) : id(id) {
 	}
+	TeradataType(TeradataTypeId id, int64_t width, int64_t scale = 0) : id(id), width(width), scale(scale) {
+	}
 
 	TeradataTypeId GetId() const {
 		return id;
@@ -127,13 +129,8 @@ public:
 	string ToString() const;
 	LogicalType ToDuckDB() const;
 
-	static TeradataTypeId FromShortCode(const string &code) {
-		const auto entry = code_map.find(code);
-		if (entry == code_map.end()) {
-			return TeradataTypeId::INVALID;
-		}
-		return entry->second;
-	}
+	// From eg. "BF" to TeradataTypeId::BYTE, INVALID if unknown
+	static TeradataTypeId FromShortCode(const string &code);
 
 	static TeradataType FromDuckDB(const LogicalType &type);
 
@@ -152,9 +149,17 @@ private:
 	TeradataTypeId id = TeradataTypeId::INVALID;
 	int64_t width = 0;
 	int64_t scale = 0;
-
-	// From eg. "BF" to TeradataTypeId::BYTE
-	static unordered_map<string, TeradataTypeId> code_map;
 };
+
+//! How a column is used in a parcel: the parcel type code encodes this next to the type itself
+enum class TeradataColumnTypeVariant { STANDARD, NULLABLE, PARAM_IN, PARAM_INOUT, PARAM_OUT };
+
+struct TeradataColumnType {
+	TeradataType type;
+	TeradataColumnTypeVariant variant;
+};
+
+//! Decode a CLIv2 parcel data type code (e.g. 449 = nullable VARCHAR). Throws for unknown codes.
+TeradataColumnType DecodeParcelType(int16_t code);
 
 } // namespace duckdb

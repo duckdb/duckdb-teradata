@@ -25,7 +25,7 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 	string query = "SELECT DatabaseName, CommentString FROM DBC.DatabasesV";
 	query += " WHERE DatabaseName = " + KeywordHelper::WriteQuoted(schema_to_load);
 
-	const auto result = conn.Query(query, false);
+	const auto result = conn.Query(query, false, context);
 
 	// Now iterate over the result and create the schema entries
 	for (auto &chunk : result->Chunks()) {
@@ -39,8 +39,7 @@ void TeradataSchemaSet::LoadEntries(ClientContext &context) {
 			const auto name = FlatVector::GetData<string_t>(name_vec)[row_idx].GetString();
 
 			CreateSchemaInfo info;
-			info.catalog = catalog.GetName();
-			info.schema = name;
+			info.SetQualification(catalog.GetName(), Identifier(name));
 			info.comment = comment_vec.GetValue(row_idx);
 
 			// Pass the entry along

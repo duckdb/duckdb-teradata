@@ -29,7 +29,14 @@ public:
 	//! Returns the storage info of this table
 	TableStorageInfo GetStorageInfo(ClientContext &context) override;
 
+	//! Returns the columns of this table
+	const ColumnList &GetColumns() const override {
+		return columns;
+	}
+
 public:
+	// The columns of this table
+	ColumnList columns;
 	// The raw teradata typess
 	vector<TeradataType> teradata_types;
 };

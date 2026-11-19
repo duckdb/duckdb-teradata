@@ -5,15 +5,21 @@
 
 #include "util/binary_reader.hpp"
 
+#include "duckdb/main/client_context.hpp"
+
+#include <chrono>
+#include <thread>
+
 namespace duckdb {
 
-TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con) {
+TeradataRequestContext::TeradataRequestContext(const TeradataConnection &con, optional_ptr<ClientContext> context_p)
+    : context(context_p) {
 	Init(con);
 }
 
 void TeradataRequestContext::Init(const TeradataConnection &con) {
 	memset(&dbc, 0, sizeof(DBCAREA)); // Clear the DBCAREA structure
-	memset(&cnta, 0, sizeof(cnta)); // Clear the control area
+	memset(&cnta, 0, sizeof(cnta));   // Clear the control area
 
 	// Initialize
 	int32_t result = EM_OK;
@@ -41,7 +47,8 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 
 	dbc.use_presence_bits = 'Y';
 
-	dbc.wait_for_resp = 'Y';
+	// With a client context we poll for responses (EM_NODATA) so that the request can be interrupted
+	dbc.wait_for_resp = context ? 'N' : 'Y';
 	dbc.wait_across_crash = 'N';
 	dbc.tell_about_crash = 'Y';
 
@@ -55,11 +62,19 @@ void TeradataRequestContext::Init(const TeradataConnection &con) {
 }
 
 void TeradataRequestContext::Execute(const string &sql) {
+	// The statement may call a stored procedure that returns result sets: accept them, and discard them
+	dbc.dynamic_result_sets_allowed = 'Y';
 	BeginRequest(sql, 'E');
 
-	MatchParcel(PclENDSTATEMENT);
-
-	EndRequest();
+	// Read up to the end of the request; failures are raised by FetchParcel
+	uint16_t parcel;
+	do {
+		parcel = FetchParcel();
+		if (parcel == PclERROR) {
+			ThrowErrorParcel("Teradata request failed");
+		}
+	} while (parcel != PclENDREQUEST);
+	is_open = false;
 }
 
 void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaAllocator &arena,
@@ -134,196 +149,6 @@ void TeradataRequestContext::Execute(const string &sql, DataChunk &chunk, ArenaA
 	EndRequest();
 }
 
-enum class TeradataColumnTypeVariant { STANDARD, NULLABLE, PARAM_IN, PARAM_INOUT, PARAM_OUT };
-
-struct TeradataColumnType {
-	TeradataType type;
-	TeradataColumnTypeVariant variant;
-};
-
-static TeradataColumnType GetTeradataTypeFromParcel(const PclInt16 type) {
-	// Nullable is 1 + the standard type
-	// Param in is 500 + the standard type
-	// Param inout is 501 + the standard type
-	// Param out is 502 + the standard type
-	switch (type) {
-	case 400:
-		return {TeradataTypeId::BLOB, TeradataColumnTypeVariant::STANDARD};
-	case 448:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD};
-	case 449:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::NULLABLE};
-	case 948:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_IN};
-	case 949:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 950:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 452:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::STANDARD};
-	case 453:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::NULLABLE};
-	case 952:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_IN};
-	case 953:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 954:
-		return {TeradataTypeId::CHAR, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// LONGVARCHAR
-	case 456:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::STANDARD};
-	case 457:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::NULLABLE};
-	case 956:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_IN};
-	case 957:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 958:
-		return {TeradataTypeId::VARCHAR, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// DECIMAL
-	case 484:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::STANDARD};
-	case 485:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::NULLABLE};
-	case 984:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_IN};
-	case 985:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 986:
-		return {TeradataTypeId::DECIMAL, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 472:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::STANDARD};
-	case 473:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::NULLABLE};
-	case 972:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_IN};
-	case 973:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 974:
-		return {TeradataTypeId::LONGVARGRAPHIC, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 480:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::STANDARD};
-	case 481:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::NULLABLE};
-	case 980:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_IN};
-	case 981:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 982:
-		return {TeradataTypeId::FLOAT, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 496:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::STANDARD};
-	case 497:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::NULLABLE};
-	case 996:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_IN};
-	case 997:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 998:
-		return {TeradataTypeId::INTEGER, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 500:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::STANDARD};
-	case 501:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::NULLABLE};
-	case 1000:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_IN};
-	case 1001:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1002:
-		return {TeradataTypeId::SMALLINT, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 600:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::STANDARD};
-	case 601:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::NULLABLE};
-	case 1100:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_IN};
-	case 1101:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1102:
-		return {TeradataTypeId::BIGINT, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 688:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD};
-	case 689:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE};
-	case 1188:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1189:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1190:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 692:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::STANDARD};
-	case 693:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::NULLABLE};
-	case 1192:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1193:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1194:
-		return {TeradataTypeId::BYTE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// Just treat these as varchar with the max length
-	case 697:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::STANDARD};
-	case 698:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::NULLABLE};
-	case 1197:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1198:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1199:
-		return {TeradataTypeId::VARBYTE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// DATE_A (ansidate)
-	case 748:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::STANDARD};
-	case 749:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::NULLABLE};
-	case 1248:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1249:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1250:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	// DATE_T (integerdate)
-	case 752:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::STANDARD};
-	case 753:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::NULLABLE};
-	case 1252:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_IN};
-	case 1253:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1254:
-		return {TeradataTypeId::DATE, TeradataColumnTypeVariant::PARAM_OUT};
-
-	case 756:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::STANDARD};
-	case 757:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::NULLABLE};
-	case 1256:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_IN};
-	case 1257:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_INOUT};
-	case 1258:
-		return {TeradataTypeId::BYTEINT, TeradataColumnTypeVariant::PARAM_OUT};
-	default:
-		// TODO: More types
-		throw NotImplementedException("Unknown data type: %d", type);
-	}
-}
-
 void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &types, vector<string> &names) {
 	BeginRequest(sql, 'P');
 
@@ -337,7 +162,7 @@ void TeradataRequestContext::Prepare(const string &sql, vector<TeradataType> &ty
 	for (int16_t col_idx = 0; col_idx < prep_info.ColumnCount; col_idx++) {
 		const auto col_info = reader.Read<CliPrepColInfoType>();
 
-		auto col_type = GetTeradataTypeFromParcel(col_info.DataType);
+		auto col_type = DecodeParcelType(col_info.DataType);
 		auto &td_type = col_type.type;
 
 		// Try to get the type mods from the format
@@ -415,7 +240,7 @@ void TeradataRequestContext::Query(const string &sql, vector<TeradataType> &type
 	for (uint16_t field_idx = 0; field_idx < field_count; field_idx++) {
 		const auto id_type = reader.Read<uint16_t>();
 
-		auto col_type = GetTeradataTypeFromParcel(id_type);
+		auto col_type = DecodeParcelType(id_type);
 		auto &td_type = col_type.type;
 
 		if (td_type.IsDecimal()) {
@@ -448,20 +273,21 @@ void TeradataRequestContext::MatchParcel(uint16_t flavor) {
 
 	if (result != flavor) {
 		if (result == PclERROR) {
-			// Parse the error message
-			BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
-			const auto stmt_no = reader.Read<uint16_t>();
-			const auto info = reader.Read<uint16_t>();
-			const auto code = reader.Read<uint16_t>();
-			const auto msg_len = reader.Read<uint16_t>();
-			const auto msg = reader.ReadBytes(msg_len);
-			const auto msg_str = string(msg, msg_len);
-			throw IOException("Expected parcel flavor %d, got error: stmt_no: %d, info: %d, code: %d, msg: '%s'",
-			                  flavor, stmt_no, info, code, msg_str);
+			ThrowErrorParcel(StringUtil::Format("Expected parcel flavor %d, got error", flavor));
 		}
-
 		throw IOException("Expected parcel flavor %d, got %d", flavor, result);
 	}
+}
+
+void TeradataRequestContext::ThrowErrorParcel(const string &context) const {
+	BinaryReader reader(buffer.data(), dbc.fet_ret_data_len);
+	const auto stmt_no = reader.Read<uint16_t>();
+	const auto info = reader.Read<uint16_t>();
+	const auto code = reader.Read<uint16_t>();
+	const auto msg_len = reader.Read<uint16_t>();
+	const auto msg = reader.ReadBytes(msg_len);
+	throw IOException("%s: stmt_no: %d, info: %d, code: %d, msg: '%s'", context, stmt_no, info, code,
+	                  string(msg, msg_len));
 }
 
 uint16_t TeradataRequestContext::FetchParcel() {
@@ -469,20 +295,26 @@ uint16_t TeradataRequestContext::FetchParcel() {
 	dbc.fet_data_ptr = buffer.data();
 	dbc.fet_max_data_len = static_cast<int32_t>(buffer.size());
 
+	static constexpr int64_t MAX_POLL_INTERVAL_MS = 50;
+	int64_t poll_interval_ms = 1;
+
 	int32_t result = EM_OK;
-	DBCHCL(&result, cnta, &dbc);
-
-	while (result == BUFOVFLOW) {
-		buffer.resize(dbc.fet_ret_data_len);
-		dbc.fet_data_ptr = buffer.data();
-		dbc.fet_max_data_len = buffer.size();
+	while (true) {
 		DBCHCL(&result, cnta, &dbc);
-	}
-
-	while (result == EM_NODATA) {
-		// No data, try again
-		// TODO: Yield the DuckDB task here, dont just busy loop
-		DBCHCL(&result, cnta, &dbc);
+		if (result == BUFOVFLOW) {
+			buffer.resize(dbc.fet_ret_data_len);
+			dbc.fet_data_ptr = buffer.data();
+			dbc.fet_max_data_len = buffer.size();
+			continue;
+		}
+		if (result == EM_NODATA) {
+			// The response is not ready yet (non-blocking mode): check for interrupts, back off and poll again
+			CheckInterrupt();
+			std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_ms));
+			poll_interval_ms = MinValue<int64_t>(poll_interval_ms * 2, MAX_POLL_INTERVAL_MS);
+			continue;
+		}
+		break;
 	}
 
 	if (result != EM_OK) {
@@ -517,6 +349,8 @@ bool TeradataRequestContext::Fetch(DataChunk &chunk, const vector<unique_ptr<Ter
 		chunk.SetCardinality(0);
 		return false;
 	}
+
+	CheckInterrupt();
 
 	idx_t row_idx = 0;
 
@@ -653,6 +487,34 @@ void TeradataRequestContext::Close() {
 		throw IOException("Failed to close Teradata request");
 	}
 	is_open = false;
+}
+
+void TeradataRequestContext::Abort() {
+	if (!is_open) {
+		return;
+	}
+	is_open = false;
+
+	// Errors are ignored: we are already unwinding because of the interrupt
+	int32_t result = EM_OK;
+	dbc.func = DBFABT;
+	DBCHCL(&result, cnta, &dbc);
+
+	result = EM_OK;
+	dbc.func = DBFERQ;
+	DBCHCL(&result, cnta, &dbc);
+}
+
+void TeradataRequestContext::CheckInterrupt() {
+	if (!context) {
+		return;
+	}
+	try {
+		context->BlockingInterruptCheck();
+	} catch (...) {
+		Abort();
+		throw;
+	}
 }
 
 TeradataRequestContext::~TeradataRequestContext() {

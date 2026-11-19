@@ -14,6 +14,7 @@
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/main/connection_manager.hpp"
 #include "duckdb/planner/extension_callback.hpp"
+#include "duckdb/storage/storage_extension.hpp"
 
 namespace duckdb {
 
@@ -67,10 +68,10 @@ static void LoadInternal(ExtensionLoader &loader) {
 	TeradataSecret::Register(loader);
 
 	// Register storage
-	instance.config.storage_extensions["teradata"] = make_uniq<TeradataStorageExtension>();
+	StorageExtension::Register(instance.config, "teradata", make_shared_ptr<TeradataStorageExtension>());
 
 	// Register callbacks
-	instance.config.extension_callbacks.push_back(make_uniq<TeradataExtensionCallback>());
+	ExtensionCallback::Register(instance.config, make_shared_ptr<TeradataExtensionCallback>());
 
 	// Register states on existing connections
 	for (const auto &con : ConnectionManager::Get(instance).GetConnectionList()) {

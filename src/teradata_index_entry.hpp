@@ -9,8 +9,8 @@ public:
 	TeradataIndexEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateIndexInfo &info, string table_name);
 
 public:
-	string GetSchemaName() const override;
-	string GetTableName() const override;
+	Identifier GetSchemaName() const override;
+	Identifier GetTableName() const override;
 
 private:
 	string table_name;

@@ -3,6 +3,7 @@
 
 #include "util/binary_reader.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace duckdb {
@@ -15,7 +16,7 @@ public:
 			FlatVector::SetNull(vec, row_idx, true);
 		} else {
 			const auto src_ptr = reader.ReadBytes(length);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddString(vec, src_ptr, length);
 		}
 	}
@@ -36,7 +37,7 @@ public:
 			reader.Skip(max_size);
 		} else {
 			const auto src_ptr = reader.ReadBytes(max_size);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddString(vec, src_ptr, max_size);
 		}
 	}
@@ -62,7 +63,7 @@ public:
 			const auto months = (td_date % 10000) / 100;
 			const auto days = td_date % 100;
 
-			FlatVector::GetData<date_t>(vec)[row_idx] = Date::FromDate(years, months, days);
+			FlatVector::GetDataMutable<date_t>(vec)[row_idx] = Date::FromDate(years, months, days);
 		}
 	}
 };
@@ -80,7 +81,7 @@ public:
 			reader.Skip(max_size);
 		} else {
 			const auto src_ptr = reader.ReadBytes(max_size);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddStringOrBlob(vec, src_ptr, max_size);
 		}
 	}
@@ -99,7 +100,7 @@ public:
 			FlatVector::SetNull(vec, row_idx, true);
 		} else {
 			const auto src_ptr = reader.ReadBytes(length);
-			const auto dst_ptr = FlatVector::GetData<string_t>(vec);
+			const auto dst_ptr = FlatVector::GetDataMutable<string_t>(vec);
 			dst_ptr[row_idx] = StringVector::AddStringOrBlob(vec, src_ptr, length);
 		}
 	}
@@ -114,7 +115,7 @@ public:
 			reader.Skip(sizeof(SRC));
 		} else {
 			const auto src = reader.Read<SRC>();
-			const auto dst = FlatVector::GetData<DST>(vec);
+			const auto dst = FlatVector::GetDataMutable<DST>(vec);
 			dst[row_idx] = src;
 		}
 	}
@@ -147,7 +148,7 @@ public:
 			interval_t interval = {};
 			interval.months = years * Interval::MONTHS_PER_YEAR;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -180,7 +181,7 @@ public:
 			interval_t interval = {};
 			interval.months = years * Interval::MONTHS_PER_YEAR + months;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -212,7 +213,7 @@ public:
 			interval_t interval = {};
 			interval.months = months;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -243,7 +244,7 @@ public:
 			interval_t interval = {};
 			interval.days = days;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -276,7 +277,7 @@ public:
 			const auto micros = hours * Interval::MICROS_PER_HOUR + days * Interval::MICROS_PER_DAY;
 			const auto interval = Interval::FromMicro(micros);
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -310,7 +311,7 @@ public:
 			                    minutes * Interval::MICROS_PER_MINUTE;
 			const auto interval = Interval::FromMicro(micros);
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -365,7 +366,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -395,7 +396,7 @@ public:
 			interval_t interval = {};
 			interval.micros = hours * Interval::MICROS_PER_HOUR;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -426,7 +427,7 @@ public:
 			interval_t interval = {};
 			interval.micros = hours * Interval::MICROS_PER_HOUR + minutes * Interval::MICROS_PER_MINUTE;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -480,7 +481,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -508,7 +509,7 @@ public:
 			interval_t interval = {};
 			interval.micros = minutes * Interval::MICROS_PER_MINUTE;
 
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -560,7 +561,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -610,7 +611,7 @@ public:
 			}
 
 			const auto interval = Interval::FromMicro(micros);
-			const auto dst = FlatVector::GetData<interval_t>(vec);
+			const auto dst = FlatVector::GetDataMutable<interval_t>(vec);
 			dst[row_idx] = interval;
 		}
 	}
@@ -620,77 +621,95 @@ public:
 // Constructor
 //----------------------------------------------------------------------------------------------------------------------
 
-unique_ptr<TeradataColumnReader> TeradataColumnReader::Make(const TeradataType &type) {
-	switch (type.GetId()) {
-	case TeradataTypeId::VARCHAR:
-		return make_uniq<TeradataVarcharReader>();
-	case TeradataTypeId::CHAR:
-		return make_uniq<TeradataCharReader>(type.GetLength());
-	case TeradataTypeId::BYTE:
-		return make_uniq<TeradataByteReader>(type.GetLength());
-	case TeradataTypeId::VARBYTE:
-		return make_uniq<TeradataVarbyteReader>();
-	case TeradataTypeId::DATE:
-		return make_uniq<TeradataDateReader>();
-	case TeradataTypeId::BYTEINT:
-		return make_uniq<TeradataFixedSizeReader<int8_t>>();
-	case TeradataTypeId::SMALLINT:
-		return make_uniq<TeradataFixedSizeReader<int16_t>>();
-	case TeradataTypeId::INTEGER:
-		return make_uniq<TeradataFixedSizeReader<int32_t>>();
-	case TeradataTypeId::BIGINT:
-		return make_uniq<TeradataFixedSizeReader<int64_t>>();
-	case TeradataTypeId::FLOAT:
-		return make_uniq<TeradataFixedSizeReader<double>>();
-	case TeradataTypeId::DECIMAL: {
-		const auto width = type.GetWidth();
-		if (width <= 2) {
-			// In teradata, the small decimals are stored as 1 byte, compared to 2 bytes in duckdb
-			return make_uniq<TeradataFixedSizeReader<int8_t, int16_t>>();
-		}
-		if (width <= 4) {
-			return make_uniq<TeradataFixedSizeReader<int16_t>>();
-		}
-		if (width <= 9) {
-			return make_uniq<TeradataFixedSizeReader<int32_t>>();
-		}
-		if (width <= 18) {
-			return make_uniq<TeradataFixedSizeReader<int64_t>>();
-		}
-		if (width <= 38) {
-			return make_uniq<TeradataFixedSizeReader<hugeint_t>>();
-		}
+namespace {
+
+using ReaderFactory = unique_ptr<TeradataColumnReader> (*)(const TeradataType &type);
+
+template <class READER>
+unique_ptr<TeradataColumnReader> MakePlain(const TeradataType &) {
+	return make_uniq<READER>();
+}
+
+// Width doubles as the length of character and byte types
+template <class READER>
+unique_ptr<TeradataColumnReader> MakeWithWidth(const TeradataType &type) {
+	return make_uniq<READER>(type.GetWidth());
+}
+
+template <class READER>
+unique_ptr<TeradataColumnReader> MakeWithWidthAndScale(const TeradataType &type) {
+	return make_uniq<READER>(type.GetWidth(), type.GetScale());
+}
+
+struct ReaderEntry {
+	TeradataTypeId id;
+	ReaderFactory factory;
+};
+
+const ReaderEntry READERS[] = {
+    {TeradataTypeId::VARCHAR, MakePlain<TeradataVarcharReader>},
+    {TeradataTypeId::CHAR, MakeWithWidth<TeradataCharReader>},
+    {TeradataTypeId::BYTE, MakeWithWidth<TeradataByteReader>},
+    {TeradataTypeId::VARBYTE, MakePlain<TeradataVarbyteReader>},
+    {TeradataTypeId::DATE, MakePlain<TeradataDateReader>},
+    {TeradataTypeId::BYTEINT, MakePlain<TeradataFixedSizeReader<int8_t>>},
+    {TeradataTypeId::SMALLINT, MakePlain<TeradataFixedSizeReader<int16_t>>},
+    {TeradataTypeId::INTEGER, MakePlain<TeradataFixedSizeReader<int32_t>>},
+    {TeradataTypeId::BIGINT, MakePlain<TeradataFixedSizeReader<int64_t>>},
+    {TeradataTypeId::FLOAT, MakePlain<TeradataFixedSizeReader<double>>},
+    {TeradataTypeId::INTERVAL_YEAR, MakeWithWidth<TeradataIntervalYearReader>},
+    {TeradataTypeId::INTERVAL_YEAR_TO_MONTH, MakeWithWidth<TeradataIntervalYearToMonthReader>},
+    {TeradataTypeId::INTERVAL_MONTH, MakeWithWidth<TeradataIntervalMonthReader>},
+    {TeradataTypeId::INTERVAL_DAY, MakeWithWidth<TeradataIntervalDayReader>},
+    {TeradataTypeId::INTERVAL_DAY_TO_HOUR, MakeWithWidth<TeradataIntervalDayToHourReader>},
+    {TeradataTypeId::INTERVAL_DAY_TO_MINUTE, MakeWithWidth<TeradataIntervalDayToMinuteReader>},
+    {TeradataTypeId::INTERVAL_DAY_TO_SECOND, MakeWithWidthAndScale<TeradataIntervalDayToSecondReader>},
+    {TeradataTypeId::INTERVAL_HOUR, MakeWithWidth<TeradataIntervalHourReader>},
+    {TeradataTypeId::INTERVAL_HOUR_TO_MINUTE, MakeWithWidth<TeradataIntervalHourToMinuteReader>},
+    {TeradataTypeId::INTERVAL_HOUR_TO_SECOND, MakeWithWidthAndScale<TeradataIntervalHourToSecondReader>},
+    {TeradataTypeId::INTERVAL_MINUTE, MakeWithWidth<TeradataIntervalMinuteReader>},
+    {TeradataTypeId::INTERVAL_MINUTE_TO_SECOND, MakeWithWidthAndScale<TeradataIntervalMinuteToSecondReader>},
+    {TeradataTypeId::INTERVAL_SECOND, MakeWithWidthAndScale<TeradataIntervalSecondReader>},
+};
+
+struct DecimalReaderEntry {
+	int64_t max_width;
+	ReaderFactory factory;
+};
+
+// Decimals are stored in the smallest integer that fits their width.
+// In Teradata, the small decimals are stored as 1 byte, compared to 2 bytes in DuckDB.
+const DecimalReaderEntry DECIMAL_READERS[] = {
+    {2, MakePlain<TeradataFixedSizeReader<int8_t, int16_t>>}, {4, MakePlain<TeradataFixedSizeReader<int16_t>>},
+    {9, MakePlain<TeradataFixedSizeReader<int32_t>>},         {18, MakePlain<TeradataFixedSizeReader<int64_t>>},
+    {38, MakePlain<TeradataFixedSizeReader<hugeint_t>>},
+};
+
+ReaderFactory FindDecimalReader(int64_t width) {
+	const auto entry = std::find_if(std::begin(DECIMAL_READERS), std::end(DECIMAL_READERS),
+	                                [&](const DecimalReaderEntry &e) { return width <= e.max_width; });
+	if (entry == std::end(DECIMAL_READERS)) {
 		throw InvalidInputException("Invalid Teradata decimal width: %d", width);
 	}
-	case TeradataTypeId::INTERVAL_YEAR:
-		return make_uniq<TeradataIntervalYearReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_YEAR_TO_MONTH:
-		return make_uniq<TeradataIntervalYearToMonthReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_MONTH:
-		return make_uniq<TeradataIntervalMonthReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_DAY:
-		return make_uniq<TeradataIntervalDayReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_DAY_TO_HOUR:
-		return make_uniq<TeradataIntervalDayToHourReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_DAY_TO_MINUTE:
-		return make_uniq<TeradataIntervalDayToMinuteReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_DAY_TO_SECOND:
-		return make_uniq<TeradataIntervalDayToSecondReader>(type.GetWidth(), type.GetScale());
-	case TeradataTypeId::INTERVAL_HOUR:
-		return make_uniq<TeradataIntervalHourReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_HOUR_TO_MINUTE:
-		return make_uniq<TeradataIntervalHourToMinuteReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_HOUR_TO_SECOND:
-		return make_uniq<TeradataIntervalHourToSecondReader>(type.GetWidth(), type.GetScale());
-	case TeradataTypeId::INTERVAL_MINUTE:
-		return make_uniq<TeradataIntervalMinuteReader>(type.GetWidth());
-	case TeradataTypeId::INTERVAL_MINUTE_TO_SECOND:
-		return make_uniq<TeradataIntervalMinuteToSecondReader>(type.GetWidth(), type.GetScale());
-	case TeradataTypeId::INTERVAL_SECOND:
-		return make_uniq<TeradataIntervalSecondReader>(type.GetWidth(), type.GetScale());
-	default:
+	return entry->factory;
+}
+
+ReaderFactory FindReader(const TeradataType &type) {
+	if (type.IsDecimal()) {
+		return FindDecimalReader(type.GetWidth());
+	}
+	const auto entry = std::find_if(std::begin(READERS), std::end(READERS),
+	                                [&](const ReaderEntry &e) { return e.id == type.GetId(); });
+	if (entry == std::end(READERS)) {
 		throw NotImplementedException("Teradata type reader for '%s' not implemented", type.ToString());
 	}
+	return entry->factory;
+}
+
+} // namespace
+
+unique_ptr<TeradataColumnReader> TeradataColumnReader::Make(const TeradataType &type) {
+	return FindReader(type)(type);
 }
 
 struct IntervalYearOp {

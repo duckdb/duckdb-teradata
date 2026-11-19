@@ -3,7 +3,10 @@
 #include "teradata_transaction.hpp"
 
 #include "duckdb/function/function.hpp"
+#include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/database_manager.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
+#include "duckdb/transaction/meta_transaction.hpp"
 
 namespace duckdb {
 
@@ -11,33 +14,30 @@ namespace duckdb {
 // Bind
 //----------------------------------------------------------------------------------------------------------------------
 struct TeradataExecuteBindData final : public TableFunctionData {
-	TeradataExecuteBindData(TeradataCatalog &td_catalog, string query_p)
-	    : td_catalog(td_catalog), query(std::move(query_p)) {
+	TeradataExecuteBindData(TeradataCatalog &td_catalog, string query_p, bool use_transaction)
+	    : td_catalog(td_catalog), query(std::move(query_p)), use_transaction(use_transaction) {
 	}
 
 	bool finished = false;
 	TeradataCatalog &td_catalog;
 	string query;
+	//! Run inside the DuckDB transaction's Teradata transaction (BEGIN/END TRANSACTION), or on its own
+	bool use_transaction;
 };
 
+static bool GetUseTransaction(const named_argument_map_t &named_parameters) {
+	const auto entry = named_parameters.find(Identifier("transaction"));
+	return entry == named_parameters.end() || entry->second.IsNull() || entry->second.GetValue<bool>();
+}
+
 static unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &input,
-                                     vector<LogicalType> &return_types, vector<string> &names) {
+                                     vector<LogicalType> &return_types, vector<Identifier> &names) {
 	return_types.emplace_back(LogicalType::BOOLEAN);
 	names.emplace_back("Success");
 
-	// look up the database to query
-	auto db_name = input.inputs[0].GetValue<string>();
-	auto &db_manager = DatabaseManager::Get(context);
-	auto db = db_manager.GetDatabase(context, db_name);
-	if (!db) {
-		throw BinderException("Failed to find attached database \"%s\" referenced in teradata_execute", db_name);
-	}
-	auto &catalog = db->GetCatalog();
-	if (catalog.GetCatalogType() != "teradata") {
-		throw BinderException("Attached database \"%s\" does not refer to a Teradata database", db_name);
-	}
-	auto &td_catalog = catalog.Cast<TeradataCatalog>();
-	return make_uniq<TeradataExecuteBindData>(td_catalog, input.inputs[1].GetValue<string>());
+	auto &td_catalog = TeradataCatalog::Find(context, input.inputs[0].GetValue<string>(), "teradata_execute");
+	return make_uniq<TeradataExecuteBindData>(td_catalog, input.inputs[1].GetValue<string>(),
+	                                          GetUseTransaction(input.named_parameters));
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -49,8 +49,20 @@ static void Execute(ClientContext &context, TableFunctionInput &data_p, DataChun
 		return;
 	}
 
-	const auto &transaction = TeradataTransaction::Get(context, data.td_catalog);
-	transaction.GetConnection().Execute(data.query);
+	if (data.use_transaction) {
+		const auto &transaction = TeradataTransaction::Get(context, data.td_catalog);
+		transaction.GetConnection().Execute(data.query, context);
+	} else {
+		// The session is shared: if this DuckDB transaction already opened a Teradata transaction, the statement
+		// would run inside it
+		if (MetaTransaction::Get(context).TryGetTransaction(data.td_catalog.GetAttached())) {
+			throw InvalidInputException(
+			    "teradata_execute with transaction := false cannot run after other statements on the same Teradata "
+			    "database in this transaction. Run it as its own statement, outside BEGIN ... COMMIT.");
+		}
+		// Teradata commits the statement on its own (implicit transaction)
+		data.td_catalog.GetConnection().Execute(data.query, context);
+	}
 	data.finished = true;
 }
 
@@ -60,6 +72,7 @@ static void Execute(ClientContext &context, TableFunctionInput &data_p, DataChun
 
 void TeradataExecuteFunction::Register(ExtensionLoader &loader) {
 	TableFunction func("teradata_execute", {LogicalType::VARCHAR, LogicalType::VARCHAR}, Execute, Bind);
+	func.GetSignature().AddKeywordOnly("transaction", LogicalType::BOOLEAN, Value::BOOLEAN(true));
 	loader.RegisterFunction(func);
 }
 

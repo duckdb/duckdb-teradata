@@ -11,6 +11,10 @@
 #include <dbcarea.h>
 #include <parcel.h>
 
+// dbcarea.h defines these as macros, which clash with duckdb::TriggerEventType enumerators
+#undef INSERT_EVENT
+#undef DELETE_EVENT
+
 #define CONNECTED     0
 #define NOT_CONNECTED 1
 #define OK            0
@@ -34,8 +38,13 @@ extern char OSERRVersion[];
 namespace duckdb {
 
 struct TeradataCLIV2 {
+	typedef Int32 (*callback_t)(Int32 *, char *, struct DBCAREA *);
+
 	static void Load(ClientContext &context);
 	static bool IsLoaded();
+
+	//! Route CLIv2 calls to the given functions instead of the Teradata library (for tests)
+	static void SetImplementation(callback_t dbchini, callback_t dbchcl);
 };
 
 } // namespace duckdb

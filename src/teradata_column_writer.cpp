@@ -5,6 +5,8 @@
 
 #include <duckdb/common/types/time.hpp>
 
+#include <algorithm>
+
 namespace duckdb {
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -251,7 +253,7 @@ public:
 		if (value) {
 			auto ts = *value;
 
-			if (Timestamp::IsFinite(ts)) {
+			if (ts.IsFinite()) {
 				ts = Timestamp::FromEpochMs(ts.value);
 			}
 
@@ -290,7 +292,7 @@ public:
 		if (value) {
 			auto ts = *value;
 
-			if (Timestamp::IsFinite(ts)) {
+			if (ts.IsFinite()) {
 				ts = Timestamp::FromEpochSeconds(ts.value);
 			}
 
@@ -367,59 +369,75 @@ public:
 // Constructor
 //----------------------------------------------------------------------------------------------------------------------
 
-unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &type) {
-	switch (type.id()) {
-	case LogicalTypeId::TINYINT:
-		return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int8_t>>();
-	case LogicalTypeId::SMALLINT:
-		return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int16_t>>();
-	case LogicalTypeId::INTEGER:
-		return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int32_t>>();
-	case LogicalTypeId::BIGINT:
-		return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int64_t>>();
-	case LogicalTypeId::DOUBLE:
-		return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<double>>();
-	case LogicalTypeId::VARCHAR:
-		return make_uniq_base<TeradataColumnWriter, TeradataVarcharWriter>();
-	case LogicalTypeId::BLOB:
-		return make_uniq_base<TeradataColumnWriter, TeradataBlobWriter>();
-	case LogicalTypeId::DECIMAL: {
-		const auto width = DecimalType::GetWidth(type);
-		if (width <= 2) {
-			// In teradata, the small decimals are stored as 1 byte, compared to 2 bytes in duckdb
-			return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int16_t, int8_t>>();
-		}
-		if (width <= 4) {
-			return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int16_t>>();
-		}
-		if (width <= 9) {
-			return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int32_t>>();
-		}
-		if (width <= 18) {
-			return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<int64_t>>();
-		}
-		if (width <= 38) {
-			return make_uniq_base<TeradataColumnWriter, TeradataFixedSizeWriter<hugeint_t>>();
-		}
+namespace {
+
+using WriterFactory = unique_ptr<TeradataColumnWriter> (*)();
+
+template <class WRITER>
+unique_ptr<TeradataColumnWriter> MakeWriter() {
+	return make_uniq_base<TeradataColumnWriter, WRITER>();
+}
+
+struct WriterEntry {
+	LogicalTypeId id;
+	WriterFactory factory;
+};
+
+const WriterEntry WRITERS[] = {
+    {LogicalTypeId::TINYINT, MakeWriter<TeradataFixedSizeWriter<int8_t>>},
+    {LogicalTypeId::SMALLINT, MakeWriter<TeradataFixedSizeWriter<int16_t>>},
+    {LogicalTypeId::INTEGER, MakeWriter<TeradataFixedSizeWriter<int32_t>>},
+    {LogicalTypeId::BIGINT, MakeWriter<TeradataFixedSizeWriter<int64_t>>},
+    {LogicalTypeId::DOUBLE, MakeWriter<TeradataFixedSizeWriter<double>>},
+    {LogicalTypeId::VARCHAR, MakeWriter<TeradataVarcharWriter>},
+    {LogicalTypeId::BLOB, MakeWriter<TeradataBlobWriter>},
+    {LogicalTypeId::DATE, MakeWriter<TeradataDateWriter>},
+    {LogicalTypeId::TIME, MakeWriter<TeradataTimeWriter>},
+    {LogicalTypeId::TIME_TZ, MakeWriter<TeradataTimeTZWriter>},
+    {LogicalTypeId::TIMESTAMP_SEC, MakeWriter<TeradataTimestampSecWriter>},
+    {LogicalTypeId::TIMESTAMP_MS, MakeWriter<TeradataTimestampMSWriter>},
+    {LogicalTypeId::TIMESTAMP, MakeWriter<TeradataTimestampUSWriter>},
+    {LogicalTypeId::TIMESTAMP_TZ, MakeWriter<TeradataTimestampTZWriter>},
+};
+
+struct DecimalWriterEntry {
+	uint8_t max_width;
+	WriterFactory factory;
+};
+
+// Decimals are stored in the smallest integer that fits their width.
+// In Teradata, the small decimals are stored as 1 byte, compared to 2 bytes in DuckDB.
+const DecimalWriterEntry DECIMAL_WRITERS[] = {
+    {2, MakeWriter<TeradataFixedSizeWriter<int16_t, int8_t>>}, {4, MakeWriter<TeradataFixedSizeWriter<int16_t>>},
+    {9, MakeWriter<TeradataFixedSizeWriter<int32_t>>},         {18, MakeWriter<TeradataFixedSizeWriter<int64_t>>},
+    {38, MakeWriter<TeradataFixedSizeWriter<hugeint_t>>},
+};
+
+WriterFactory FindDecimalWriter(uint8_t width) {
+	const auto entry = std::find_if(std::begin(DECIMAL_WRITERS), std::end(DECIMAL_WRITERS),
+	                                [&](const DecimalWriterEntry &e) { return width <= e.max_width; });
+	if (entry == std::end(DECIMAL_WRITERS)) {
 		throw InvalidInputException("Invalid Teradata decimal width: %d", width);
 	}
-	case LogicalTypeId::DATE:
-		return make_uniq_base<TeradataColumnWriter, TeradataDateWriter>();
-	case LogicalTypeId::TIME:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimeWriter>();
-	case LogicalTypeId::TIME_TZ:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimeTZWriter>();
-	case LogicalTypeId::TIMESTAMP_SEC:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampSecWriter>();
-	case LogicalTypeId::TIMESTAMP_MS:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampMSWriter>();
-	case LogicalTypeId::TIMESTAMP:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampUSWriter>();
-	case LogicalTypeId::TIMESTAMP_TZ:
-		return make_uniq_base<TeradataColumnWriter, TeradataTimestampTZWriter>();
-	default:
+	return entry->factory;
+}
+
+WriterFactory FindWriter(const LogicalType &type) {
+	if (type.id() == LogicalTypeId::DECIMAL) {
+		return FindDecimalWriter(DecimalType::GetWidth(type));
+	}
+	const auto entry =
+	    std::find_if(std::begin(WRITERS), std::end(WRITERS), [&](const WriterEntry &e) { return e.id == type.id(); });
+	if (entry == std::end(WRITERS)) {
 		throw NotImplementedException("TeradataColumnWriter::Make: type %s not supported", type.ToString());
 	}
+	return entry->factory;
+}
+
+} // namespace
+
+unique_ptr<TeradataColumnWriter> TeradataColumnWriter::Make(const LogicalType &type) {
+	return FindWriter(type)();
 }
 
 } // namespace duckdb

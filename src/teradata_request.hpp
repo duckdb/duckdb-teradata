@@ -13,7 +13,8 @@ class TeradataColumnWriter;
 
 class TeradataRequestContext {
 public:
-	explicit TeradataRequestContext(const TeradataConnection &con);
+	// If a client context is passed, the request polls for responses and can be interrupted (cancelled)
+	explicit TeradataRequestContext(const TeradataConnection &con, optional_ptr<ClientContext> context = nullptr);
 	void Init(const TeradataConnection &con);
 
 	// Execute a statement without returning any data
@@ -40,13 +41,20 @@ private:
 	void BeginRequest(const string &sql, char mode);
 	void EndRequest();
 	void Close();
+	// Abort the in-flight request (DBFABT) and end it (DBFERQ). Never throws.
+	void Abort();
+	// Abort the request and throw if the query was interrupted
+	void CheckInterrupt();
 	void MatchParcel(uint16_t flavor);
+	//! Throw the error carried by the PclERROR parcel in the buffer
+	[[noreturn]] void ThrowErrorParcel(const string &context) const;
 	uint16_t FetchParcel();
 
 	DBCAREA dbc = {};
 	char cnta[4] = {};
 	vector<char> buffer;
 	bool is_open = false;
+	optional_ptr<ClientContext> context;
 };
 
 } // namespace duckdb

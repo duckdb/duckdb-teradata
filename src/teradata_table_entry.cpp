@@ -9,7 +9,7 @@
 namespace duckdb {
 
 TeradataTableEntry::TeradataTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info)
-    : TableCatalogEntry(catalog, schema, info) {
+    : TableCatalogEntry(catalog, schema, info), columns(std::move(info.columns)) {
 
 	for (auto &col : columns.Logical()) {
 		// Use the default mapping from DuckDB to Teradata types if were creating a table from within duckdb
@@ -18,7 +18,8 @@ TeradataTableEntry::TeradataTableEntry(Catalog &catalog, SchemaCatalogEntry &sch
 }
 
 TeradataTableEntry::TeradataTableEntry(Catalog &catalog, SchemaCatalogEntry &schema, TeradataTableInfo &info)
-    : TableCatalogEntry(catalog, schema, info), teradata_types(std::move(info.teradata_types)) {
+    : TableCatalogEntry(catalog, schema, info), columns(std::move(info.columns)),
+      teradata_types(std::move(info.teradata_types)) {
 	D_ASSERT(teradata_types.size() == columns.LogicalColumnCount());
 }
 
@@ -33,14 +34,14 @@ TableFunction TeradataTableEntry::GetScanFunction(ClientContext &context, unique
 	auto result = make_uniq<TeradataBindData>();
 
 	// Setup the bind data
-	result->schema_name = schema.name;
-	result->table_name = name;
+	result->schema_name = schema.name.GetIdentifierName();
+	result->table_name = name.GetIdentifierName();
 	result->SetCatalog(td_catalog);
 	result->SetTable(*this);
 
 	for (idx_t col_idx = 0; col_idx < columns.LogicalColumnCount(); col_idx++) {
 		auto &col = columns.GetColumnMutable(LogicalIndex(col_idx));
-		result->names.push_back(col.GetName());
+		result->names.push_back(col.GetName().GetIdentifierName());
 		result->types.push_back(col.GetType());
 	}
 
